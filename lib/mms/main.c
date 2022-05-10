@@ -65,8 +65,6 @@ void transcode(AVFormatContext *input_fmt_ctx, char * out_fmt, char *out_path){
         return;
     }
 
-
-
     err = avio_open(&out_ctx->pb,OUT_VIDEO_URL,AVIO_FLAG_WRITE);
     if (err){
         printf("failed to create IO context for out_fmt_ctx\nerr: %s\n", av_err2str(err));
@@ -101,7 +99,6 @@ void transcode(AVFormatContext *input_fmt_ctx, char * out_fmt, char *out_path){
      if (err < 0){
          printf("err: %s\n", av_err2str(err));
      }
-
 }
 static void print_dict(const AVDictionary *m)
 {
