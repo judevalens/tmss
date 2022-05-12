@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 )
 
@@ -19,6 +20,13 @@ type NAlHeader struct {
 	ForbiddenBit byte
 	NRI          byte
 	NalType      byte
+}
+
+type FuHeader struct {
+	Start    byte
+	End      byte
+	Reserved byte
+	Type     byte
 }
 
 type FragmentationUnitHeader struct {
@@ -98,24 +106,71 @@ type Mtap24PacketContainer struct {
 
 type FUa struct {
 	FuIndicator NAlHeader
-	FuHeader    FragmentationUnitHeader
+	FuHeader    FuHeader
 	DoN         int16
 	Payload     []byte
 }
 
-func getNalHeader(headerB byte) NAlHeader {
+func (packet SingleNalPacket) serialize() []byte {
+	var header byte
+	rawPacket := make([]byte, len(packet.data)+1)
 
-	//TODO clean up this mess/
-	forbiddenByte := headerB & 1
-	fmt.Printf("start: %v\n", strconv.FormatInt(int64(headerB), 2))
-	nri := (headerB << 5) >> 6
-	nalType := headerB >> 3
+	rawPacket[0] = header
+	copy(rawPacket[1:], packet.data)
+	header = header | packet.header.ForbiddenBit
+	header = header | (packet.header.NRI << 1)
+	header = header | (packet.header.NalType << 3)
+	return rawPacket
+}
+
+func getNalHeader(header byte) NAlHeader {
+
+	//TODO clean up this mess
+	forbiddenByte := header & 1
+	fmt.Printf("start: %v\n", strconv.FormatInt(int64(header), 2))
+	nri := (header << 5) >> 6
+	nalType := header >> 3
 	fmt.Printf("end: %v\n", strconv.FormatInt(int64(nri), 2))
 	fmt.Printf("forbidden byte: %v, nri: %v, nalType: %v\n", forbiddenByte, nri, nalType)
 	//ENDofTODO//
 	return NAlHeader{
-		ForbiddenBit: headerB & 1,
-		NRI:          (headerB << 5) >> 6,
-		NalType:      headerB >> 3,
+		ForbiddenBit: (header << 7) >> 7,
+		NRI:          (header << 5) >> 6,
+		NalType:      header >> 3,
 	}
+}
+
+func getFuHeader(header byte) FuHeader {
+	return FuHeader{
+		Start:    (header << 7) >> 7,
+		End:      (header << 6) >> 7,
+		Reserved: (header << 5) >> 7,
+		Type:     header >> 3,
+	}
+}
+
+func (packet FUa) serialize(data []byte, maxPacketSize int) [][]byte {
+	nFragment := (int)(math.Ceil(float64(len(data)) / float64(maxPacketSize)))
+	rawPackets := make([][]byte, nFragment)
+	var fuIndicator byte
+	var fuHeader byte
+
+	fuIndicator = fuIndicator | packet.FuIndicator.ForbiddenBit
+	fuIndicator = fuIndicator | (packet.FuIndicator.NRI << 2)
+	fuIndicator = fuIndicator | (packet.FuIndicator.NalType << 3)
+
+	fuHeader = fuHeader | packet.FuHeader.Start
+	fuHeader = fuHeader | (packet.FuHeader.End << 1)
+	fuHeader = fuHeader | (packet.FuHeader.Reserved << 2)
+	fuHeader = fuHeader | (packet.FuHeader.Type << 3)
+	startIndex := 0
+	endIndex := 0
+
+	println(nFragment)
+	for i := 0; i < nFragment; i++ {
+		endIndex = startIndex + int(math.Min(float64(maxPacketSize), float64(len(data)-startIndex)))
+		rawPackets[i] = data[startIndex:endIndex]
+		startIndex += maxPacketSize
+	}
+	return rawPackets
 }

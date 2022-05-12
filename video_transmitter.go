@@ -15,6 +15,17 @@ const mtu = 65527
 
 const MaxFrameBufferSize = 10
 
+type VideoTransmitter struct {
+	mediaBuffer *C.struct_MediaBuffer
+}
+
+func initVideoTransmitter() *VideoTransmitter {
+	videoTransmitter := &VideoTransmitter{}
+	videoTransmitter.mediaBuffer = C.init_media_buffer(C.CString("file:/mnt/c/Users/judev/Downloads/big buck bunny.mp4"))
+	C.bufferUP(videoTransmitter.mediaBuffer)
+	return videoTransmitter
+}
+
 func startRtpServer() {
 
 	var err error
