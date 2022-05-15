@@ -11,7 +11,7 @@ import (
 
 const receiverAdd = ""
 const addr = ":4874"
-const mtu = 65527
+const mtu = 1200
 
 const MaxFrameBufferSize = 10
 
