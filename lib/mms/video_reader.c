@@ -4,6 +4,12 @@
 #include "video_reader.h"
 
 #define FRAME_BUFFER_SIZE  5
+#define AUDIO_SUFFIX  "_AUDIO"
+#define VIDEO_SUFFIX  "_VIDEO"
+#define MAX_URL_LEN     250
+#define FILE_URL_SCHEME "file:"
+#define DEFAULT_DIR "/mnt/c/Users/judev/OneDrive/Desktop/amnis server/"
+char *getFileName(char *name);
 
 AVFormatContext *open_media(char *mediaPath) {
     AVFormatContext *mediaContext = avformat_alloc_context();
@@ -46,12 +52,12 @@ struct MediaBuffer *init_media_buffer(char *mediaPath) {
             videoStream = stream;
         }
     }
-    size_t videoBuffSize = sizeof(void*) * videoStream->r_frame_rate.num * FRAME_BUFFER_SIZE;
-    printf("video buffer size: %zu\n",videoBuffSize);
-    mediaBuffer->videoBuffer = malloc(sizeof (struct FrameBuffer));
+    size_t videoBuffSize = sizeof(void *) * videoStream->r_frame_rate.num * FRAME_BUFFER_SIZE;
+    printf("video buffer size: %zu\n", videoBuffSize);
+    mediaBuffer->videoBuffer = malloc(sizeof(struct FrameBuffer));
     mediaBuffer->videoBuffer->count = 0;
     mediaBuffer->videoBuffer->maxSize = videoStream->r_frame_rate.num * FRAME_BUFFER_SIZE;
-    printf("buffer count %d, maxsize %d\n",mediaBuffer->videoBuffer->count,mediaBuffer->videoBuffer->maxSize);
+    printf("buffer count %d, maxsize %d\n", mediaBuffer->videoBuffer->count, mediaBuffer->videoBuffer->maxSize);
 
     return mediaBuffer;
 }
@@ -79,9 +85,9 @@ void buffer(struct MediaBuffer *buffer, int percent) {
                     printf("\ntimebase: num :%d, den: %d\n", videoStream->time_base.num, videoStream->time_base.den);
                 }
                 buffer->videoBuffer->packets++;
-                buffer->videoBuffer->packets = malloc(sizeof (AVPacket));
-                * (AVPacket*)buffer->videoBuffer->packets = *pkt;
-                AVPacket* pkt2 =  (AVPacket*)buffer->videoBuffer->packets;
+                buffer->videoBuffer->packets = malloc(sizeof(AVPacket));
+                *(AVPacket *) buffer->videoBuffer->packets = *pkt;
+                AVPacket *pkt2 = (AVPacket *) buffer->videoBuffer->packets;
                 pkt = av_packet_alloc();
 
                 nReadVideoFrame++;
@@ -90,8 +96,8 @@ void buffer(struct MediaBuffer *buffer, int percent) {
 
             } else if (mediaType == AVMEDIA_TYPE_AUDIO) {
                 nReadAudioFrame++;
-               printf("#%d: audio dts %ld, pts %ld  max frame: %ld\n", nReadAudioFrame, pkt->dts,
-                                     pkt->pts, buffer->mediaContext->streams[streamIndex]->nb_frames);
+                printf("#%d: audio dts %ld, pts %ld  max frame: %ld\n", nReadAudioFrame, pkt->dts,
+                       pkt->pts, buffer->mediaContext->streams[streamIndex]->nb_frames);
             }
         } else {
             printf("err while reading frame\nerr: %s", av_err2str(err));
@@ -105,33 +111,33 @@ int bufferUP(struct MediaBuffer *buffer) {
     int err = 0;
     AVPacket *pkt = av_packet_alloc();
     int64_t nbFrames = buffer->mediaContext->streams[buffer->videoStreamIndex]->nb_frames;
-    printf("buffer count %d, maxsize %d",buffer->videoBuffer->count,buffer->videoBuffer->maxSize);
+    printf("buffer count %d, maxsize %d", buffer->videoBuffer->count, buffer->videoBuffer->maxSize);
     while (buffer->videoBuffer->count < buffer->videoBuffer->maxSize) {
 
         err = av_read_frame(buffer->mediaContext, pkt);
 
-        if (err < 0 ){
-            if (pkt->data == NULL){
+        if (err < 0) {
+            if (pkt->data == NULL) {
                 printf("err while reading frame\nerr: %s", av_err2str(err));
                 return -2;
-            }else{
+            } else {
                 printf("END OF STREAM\n");
                 return -1;
             }
         }
-            int streamIndex = pkt->stream_index;
+        int streamIndex = pkt->stream_index;
 
-            enum AVMediaType mediaType = buffer->mediaContext->streams[streamIndex]->codecpar->codec_type;
+        enum AVMediaType mediaType = buffer->mediaContext->streams[streamIndex]->codecpar->codec_type;
 
-            if (mediaType == AVMEDIA_TYPE_VIDEO) {
-                AVStream *videoStream = buffer->mediaContext->streams[streamIndex];
-                circularBufferAdd(buffer->videoBuffer,pkt);
-                printf("buffer start %d, buffer end %d\n",buffer->videoBuffer->start,buffer->videoBuffer->end);
-                printf("pts %ld\n",pkt->pts);
-                pkt = av_packet_alloc();
-            } else if (mediaType == AVMEDIA_TYPE_AUDIO) {
-                //TODO
-            }
+        if (mediaType == AVMEDIA_TYPE_VIDEO) {
+            AVStream *videoStream = buffer->mediaContext->streams[streamIndex];
+            circularBufferAdd(buffer->videoBuffer, pkt);
+            printf("buffer start %d, buffer end %d\n", buffer->videoBuffer->start, buffer->videoBuffer->end);
+            printf("pts %ld\n", pkt->pts);
+            pkt = av_packet_alloc();
+        } else if (mediaType == AVMEDIA_TYPE_AUDIO) {
+            //TODO
+        }
     }
 }
 
@@ -150,9 +156,101 @@ void *circularBuffGet(struct FrameBuffer *buffer) {
     return item;
 }
 
-void circularBufferAdd(struct FrameBuffer *buffer, void *packet){
+void circularBufferAdd(struct FrameBuffer *buffer, void *packet) {
     buffer->packets[buffer->end] = packet;
     buffer->end++;
     buffer->end %= buffer->maxSize;
     buffer->count++;
+}
+
+void demux_file(AVFormatContext *mediaContext) {
+    char *defaultContainerFormat = "mp4";
+    char *audiUrl = "";
+    char *videoURL = "";
+    int res = 0;
+    AVFormatContext *audioOutCtx = NULL;
+    AVFormatContext *videoOutCtx = NULL;
+    AVFormatContext **mediaMap = malloc(sizeof(AVFormatContext *) * 2);
+    const char *mediaBaseName = av_basename(mediaContext->url);
+    char *fileName = getFileName((char*)mediaBaseName);
+    // printf("base name: %s\n",mediaBaseName);
+
+    char *audioOutName = malloc(MAX_URL_LEN);
+    char *videoOutName = malloc(MAX_URL_LEN);
+    char *audioOutUrl  = malloc(MAX_URL_LEN);
+    char *videoOutUrl  = malloc(MAX_URL_LEN);
+
+    sprintf(audioOutName, "%s%s.%s", fileName, AUDIO_SUFFIX, defaultContainerFormat);
+    sprintf(videoOutName, "%s%s.%s", fileName, VIDEO_SUFFIX, defaultContainerFormat);
+    sprintf(audioOutUrl, "%s%s%s", FILE_URL_SCHEME,DEFAULT_DIR,audioOutName);
+    sprintf(videoOutUrl, "%s%s%s", FILE_URL_SCHEME,DEFAULT_DIR,videoOutName);
+    free(fileName);
+    for (int i = 0; i < mediaContext->nb_streams; i++) {
+        if (audioOutCtx != NULL && videoOutCtx != NULL) {
+            printf("There should not be more than two streams\n");
+            return;
+        }
+        AVFormatContext *currentOutCtx;
+        AVStream *currentStream = mediaContext->streams[i];
+        if (currentStream->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
+            res = avformat_alloc_output_context2(&videoOutCtx, NULL, NULL, videoOutUrl);
+            currentOutCtx = videoOutCtx;
+            if (res < 0) {
+                return;
+            }
+        } else if (currentStream->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
+            res = avformat_alloc_output_context2(&audioOutCtx, NULL, NULL, audioOutUrl);
+            if (res < 0) {
+                return;
+            }
+            currentOutCtx = audioOutCtx;
+        }
+        AVStream *newStream = avformat_new_stream(currentOutCtx, NULL);
+        avcodec_parameters_copy(newStream->codecpar, currentStream->codecpar);
+        mediaMap[currentStream->index] = currentOutCtx;
+    }
+
+    AVPacket *packet = av_packet_alloc();
+    printf("video url: %s\n", videoOutCtx->url);
+    printf("audio url: %s\n", audioOutCtx->url);
+     if (avio_open(&audioOutCtx->pb,audioOutCtx->url,AVIO_FLAG_WRITE)  < 0 || avio_open(&videoOutCtx->pb,videoOutCtx->url,AVIO_FLAG_WRITE)  < 0){
+          printf("failed to open AVIO context\n");
+          return;
+      }
+
+     avformat_write_header(videoOutCtx,NULL);
+     avformat_write_header(audioOutCtx,NULL);
+     int i = 0;
+    while(av_read_frame(mediaContext,packet) >= 0){
+        printf("%d: writing frame: stream# %d\n", i++,packet->stream_index);
+
+        AVStream *srcStream = mediaContext->streams[packet->stream_index];
+        int streamIndex = packet->stream_index;
+        packet->stream_index = 0;
+        av_packet_rescale_ts(packet,srcStream->time_base,
+                             mediaMap[streamIndex]->streams[0]->time_base);
+        av_interleaved_write_frame(mediaMap[streamIndex], packet);
+    }
+
+    av_write_trailer(audioOutCtx);
+    av_write_trailer(videoOutCtx);
+
+}
+
+char *getFileName(char *name) {
+
+    int lastDotI = 0;
+
+    for (int i = 0; i < strlen(name); i++) {
+
+        if (name[i] == '.') {
+            lastDotI = i;
+        }
+    }
+
+    char *fileName = malloc(sizeof(char) * (lastDotI + 1));
+    memcpy(fileName, name, sizeof(char) * (lastDotI));
+    fileName[lastDotI] = '\0';
+    printf("file name: %s\n", fileName);
+    return fileName;
 }

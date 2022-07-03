@@ -17,6 +17,7 @@ const MaxFrameBufferSize = 10
 
 type VideoTransmitter struct {
 	mediaBuffer *C.struct_MediaBuffer
+	packetChan  chan chan NalUnit
 }
 
 func initVideoTransmitter() *VideoTransmitter {
@@ -40,7 +41,7 @@ func startRtpServer() {
 			return
 		}
 
-		go transmitH264(context.Background(), conn)
+		go handleRtpSession(context.Background(), conn)
 
 	}
 
@@ -80,7 +81,7 @@ type h264Frame struct {
 	pts  int64
 }
 
-func transmitH264(ctx context.Context, conn net.Conn) {
+func handleRtpSession(ctx context.Context, conn net.Conn) {
 	buff := make([]byte, mtu)
 	for {
 		read, err := conn.Read(buff)
@@ -94,11 +95,24 @@ func transmitH264(ctx context.Context, conn net.Conn) {
 	}
 }
 
+func (t VideoTransmitter) transmitH264() {
+
+	for {
+		select {}
+	}
+}
+
 func sendFrame(conn net.Conn) {
 }
 
-func bufferUP() {
+func (t VideoTransmitter) bufferUP() {
+	for {
+		select {}
+	}
+}
 
+func (t VideoTransmitter) buildHdrHeader() NAlHeader {
+	return NAlHeader{}
 }
 
 func FillBuffer() {

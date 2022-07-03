@@ -7,6 +7,8 @@
 #include "libavutil/avutil.h"
 #include "libavformat/avformat.h"
 #include "libavformat/avio.h"
+#include "libavutil/avstring.h"
+#include "libavcodec/avcodec.h"
 #endif //MMS_VIDEO_READER_H
 
  struct MediaBuffer{
@@ -33,3 +35,4 @@ void buffer(struct MediaBuffer *buffer, int percent);
 int bufferUP(struct MediaBuffer *buffer);
 void *circularBuffGet(struct FrameBuffer *buffer);
 void circularBufferAdd(struct FrameBuffer *buffer, void *packet);
+void demux_file(AVFormatContext *mediaContext);

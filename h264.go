@@ -41,6 +41,10 @@ type H264Payload struct {
 	data   []byte
 }
 
+type NalUnit interface {
+	serialize() []byte
+}
+
 type SingleNalPacket struct {
 	header NAlHeader
 	data   []byte
@@ -149,7 +153,7 @@ func getFuHeader(header byte) FuHeader {
 	}
 }
 
-func (packet FUa) serialize(rtpHeader RtpHeader, data []byte, maxPacketSize int) [][]byte {
+func (packet FUa) serialize(header []byte, data []byte, maxPacketSize int) [][]byte {
 	nFragment := (int)(math.Ceil(float64(len(data)) / float64(maxPacketSize)))
 	rawPackets := make([][]byte, nFragment)
 	var fuIndicator byte
@@ -173,9 +177,7 @@ func (packet FUa) serialize(rtpHeader RtpHeader, data []byte, maxPacketSize int)
 		payloadFragment[0] = fuIndicator
 		payloadFragment[1] = fuHeader
 		copy(payloadFragment[2:], data[startIndex:endIndex])
-		rtpHeader.SequenceNumber = (uint16)(getRtpSequence())
-		rawHeader := serializeRtpHeader(rtpHeader)
-		rawPackets[i] = serializeRTPPacket(rawHeader, payloadFragment)
+		rawPackets[i] = serializeRTPPacket(header, payloadFragment)
 		startIndex += maxPacketSize
 	}
 	return rawPackets
