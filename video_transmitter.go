@@ -10,7 +10,7 @@ import (
 )
 
 const receiverAdd = ""
-const addr = ":4874"
+const addr = "[::1]:5009"
 const mtu = 1200
 
 const MaxFrameBufferSize = 10
@@ -30,20 +30,23 @@ func initVideoTransmitter() *VideoTransmitter {
 func startRtpServer() {
 
 	var err error
-	listener, err := net.Listen("udp", addr)
+	var buffer = make([]byte, 25000)
+	listener, err := net.ListenPacket("udp6", addr)
 	if err != nil {
-		fmt.Printf("failed to create udp connection\nerr:%v", err)
+		fmt.Printf("failed to create udp connection\nerr:%v\n", err)
+		return
 	}
+	fmt.Printf("waiting for packets on %v\n", listener.LocalAddr())
 	for {
-
-		conn, err := listener.Accept()
+		_, addr, err := listener.ReadFrom(buffer)
 		if err != nil {
 			return
 		}
 
-		go handleRtpSession(context.Background(), conn)
+		handleRtpSession(context.Background(), buffer, addr)
 
 	}
+	fmt.Printf("server shut down\n")
 
 }
 
@@ -81,18 +84,35 @@ type h264Frame struct {
 	pts  int64
 }
 
-func handleRtpSession(ctx context.Context, conn net.Conn) {
-	buff := make([]byte, mtu)
+func handleRtpSession(ctx context.Context, msg []byte, conn net.Addr) {
+	fmt.Printf("receive new message\n")
+}
+
+func rtpClient() {
+	dial, err := net.Dial("udp6", "[::1]:5009")
+	if err != nil {
+		fmt.Printf("failed to dial rtp server\nerr:%v\n", err)
+		return
+	}
+	buffer := make([]byte, 1500)
 	for {
-		read, err := conn.Read(buff)
+		fmt.Printf("dialed %v\n", dial.LocalAddr().String())
+
+		_, err := dial.Write([]byte("hello from client"))
 		if err != nil {
-			fmt.Printf("failed to read from udp conn\nerr:%v", err)
+			fmt.Printf("failed to write to server\n")
 			return
 		}
-		_ = read
 
-		fmt.Printf("receive new message")
+		read, err := dial.Read(buffer)
+		if err != nil {
+			fmt.Printf("failed to receive stream from client...\n err: %v\n", err)
+			return
+		}
+
+		fmt.Printf("received new msg from rtp server.... msg len: %v\n\n", read)
 	}
+
 }
 
 func (t VideoTransmitter) transmitH264() {
