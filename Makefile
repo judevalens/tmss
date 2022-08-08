@@ -1,2 +1,2 @@
 build-lib:
-	cd lib/mms/build && cmake --build . && cmake --install .
+	cd lib/mms/cmake-build-debug && cmake --build . && cmake --install .

@@ -8,7 +8,7 @@
 #define VIDEO_SUFFIX  "_VIDEO"
 #define MAX_URL_LEN     250
 #define FILE_URL_SCHEME "file:"
-#define DEFAULT_DIR "/mnt/c/Users/judev/OneDrive/Desktop/amnis server/"
+#define DEFAULT_DIR "/home/jude/Desktop/amnis server/"
 char *getFileName(char *name);
 
 AVFormatContext *open_media(char *mediaPath) {
@@ -173,7 +173,7 @@ void demux_file(AVFormatContext *mediaContext) {
     AVFormatContext **mediaMap = malloc(sizeof(AVFormatContext *) * 2);
     const char *mediaBaseName = av_basename(mediaContext->url);
     char *fileName = getFileName((char*)mediaBaseName);
-    // printf("base name: %s\n",mediaBaseName);
+    printf("input url: %s\n",mediaContext->url);
 
     char *audioOutName = malloc(MAX_URL_LEN);
     char *videoOutName = malloc(MAX_URL_LEN);
@@ -213,11 +213,16 @@ void demux_file(AVFormatContext *mediaContext) {
     AVPacket *packet = av_packet_alloc();
     printf("video url: %s\n", videoOutCtx->url);
     printf("audio url: %s\n", audioOutCtx->url);
-     if (avio_open(&audioOutCtx->pb,audioOutCtx->url,AVIO_FLAG_WRITE)  < 0 || avio_open(&videoOutCtx->pb,videoOutCtx->url,AVIO_FLAG_WRITE)  < 0){
-          printf("failed to open AVIO context\n");
+    res = avio_open(&audioOutCtx->pb,audioOutCtx->url,AVIO_FLAG_WRITE) ;
+     if ( res < 0){
+          printf("failed to open audio AVIO context\n err: %s\n", av_err2str(res));
           return;
       }
-
+    res = avio_open(&videoOutCtx->pb,videoOutCtx->url,AVIO_FLAG_WRITE);
+    if ( res < 0){
+        printf("failed to open video AVIO context\n err: %s", av_err2str(res));
+        return;
+    }
      avformat_write_header(videoOutCtx,NULL);
      avformat_write_header(audioOutCtx,NULL);
      int i = 0;

@@ -10,7 +10,7 @@ import (
 )
 
 const receiverAdd = ""
-const addr = "[::1]:5009"
+const addr = ":5004"
 const mtu = 1200
 
 const MaxFrameBufferSize = 10
@@ -27,24 +27,29 @@ func initVideoTransmitter() *VideoTransmitter {
 	return videoTransmitter
 }
 
-func startRtpServer() {
-
+func startRtpServer(ctx context.Context, addr2 string) {
 	var err error
 	var buffer = make([]byte, 25000)
-	listener, err := net.ListenPacket("udp6", addr)
+	listener, err := net.ListenPacket("udp", addr2)
 	if err != nil {
 		fmt.Printf("failed to create udp connection\nerr:%v\n", err)
 		return
 	}
 	fmt.Printf("waiting for packets on %v\n", listener.LocalAddr())
+	i := 0
+	rtpPacketChannel := make(chan RtpPacket, 10)
+	startPacketHandler(ctx, rtpPacketChannel, 10)
 	for {
-		_, addr, err := listener.ReadFrom(buffer)
+		packetSize, _, err := listener.ReadFrom(buffer)
 		if err != nil {
 			return
 		}
+		i++
+		fmt.Printf("#%v: new msg, msg len: %v\n", i, packetSize)
+		//	handleRtpSession(context.Background(), buffer, addr)
+		packet := parseRtpPacket(buffer, packetSize)
 
-		handleRtpSession(context.Background(), buffer, addr)
-
+		rtpPacketChannel <- packet
 	}
 	fmt.Printf("server shut down\n")
 
@@ -84,8 +89,23 @@ type h264Frame struct {
 	pts  int64
 }
 
-func handleRtpSession(ctx context.Context, msg []byte, conn net.Addr) {
-	fmt.Printf("receive new message\n")
+func startPacketHandler(ctx context.Context, rtpPacketChannel chan RtpPacket, poolSize int) {
+	i := 0
+	for i < poolSize {
+		i++
+		childCtx, _ := context.WithCancel(ctx)
+
+		go func(ctx context.Context, rtpChannel2 chan RtpPacket, workerN int) {
+			for {
+				select {
+				case <-childCtx.Done():
+					return
+				case rtpPacket := <-rtpChannel2:
+					fmt.Printf("worker #%v: new packet received,rtp version = %v, payloadtype = %v,  timestamp = %v, seqNumber = %v\n", workerN, rtpPacket.header.Version, rtpPacket.header.PayloadType, rtpPacket.header.Timestamp, rtpPacket.header.SequenceNumber)
+				}
+			}
+		}(childCtx, rtpPacketChannel, i)
+	}
 }
 
 func rtpClient() {

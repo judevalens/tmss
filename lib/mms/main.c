@@ -6,9 +6,9 @@
 #include "libavcodec/avcodec.h"
 #include "video_reader.h"
 
-#define VIDEO_SAMPLE_URL "file:/mnt/c/Users/judev/Downloads/big buck bunny.mp4"
-#define OUT_VIDEO_URL "file:/mnt/c/Users/judev/Downloads/big buck bunny.mkv"
-#define OUT_VIDEO_PATH "/mnt/c/Users/judev/Downloads/big buck bunny.mkv"
+#define VIDEO_SAMPLE_URL "file:/home/jude/Downloads/buck_bunny.mp4"
+#define OUT_VIDEO_URL "file:home/jude/Downloads/buck_bunny.mkv"
+#define OUT_VIDEO_PATH "home/jude/Downloads/buck_bunny.mkv"
 #define OUT_FORMAT "MKV"
 
 AVFormatContext* openMedia();

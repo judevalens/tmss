@@ -1,10 +1,24 @@
 package main
 
+import (
+	"fmt"
+	"tmss/rtsp_parser"
+)
+
 func main() {
-	//initVideoTransmitter()
-	//a := FUa{}
-	//go rtpClient()
-	startRtpServer()
-	//fmt.Printf("%v\n", a.serialize([]byte{3, 4, 5, 6, 7, 8, 9}, 3))
-	//fmt.Println(strconv.FormatInt(int64(2>>1), 2))
+
+	rtpRequest := "" +
+		"SETUP rtsp://example.com/media.mp4/streamid=0 RTSP/10\r\n" +
+		"CSeq: 3\r\n" +
+		"Transport: RTP/AVP;unicast;client_port=8000-8001\r\n" +
+		"\r\n"
+
+	req, err := rtsp_parser.ParseRequest(rtpRequest)
+
+	if err != nil {
+		fmt.Printf("err: %v\n", err)
+	}
+
+	fmt.Printf("req: %v\n", req)
+
 }
