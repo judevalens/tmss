@@ -1,4 +1,4 @@
-package rtsp_parser
+package rtsp
 
 import (
 	"errors"
@@ -11,10 +11,13 @@ import (
 const LineBreak = "\r\n"
 
 type RtspRequest struct {
-	Method  string
-	Uri     *url.URL
-	Version string
-	Headers map[string]string
+	Method     string
+	Uri        *url.URL
+	Version    string
+	Headers    map[string]string
+	headerSize int
+	BodySize   int
+	Body       string
 }
 
 type RtspResponse struct {
@@ -22,6 +25,8 @@ type RtspResponse struct {
 	StatusCode int
 	Reason     string
 	Headers    map[string]string
+	BodySize   int
+	headerSize int
 }
 
 func ParseRequest(msg string) (RtspRequest, error) {
@@ -46,11 +51,17 @@ func ParseRequest(msg string) (RtspRequest, error) {
 	}
 	rtpMsg.Uri = u
 	rtpMsg.Version = statusLine[2]
-	err = parseHeader(msg, i, rtpMsg.Headers)
+	i, err = parseHeader(msg, i, rtpMsg.Headers)
 	if err != nil {
 		fmt.Printf("incorrect header line")
 		return RtspRequest{}, err
 	}
+	bodySize, err := strconv.Atoi(rtpMsg.Headers["Content-length"])
+	if err != nil {
+		fmt.Printf("invalid header")
+		return RtspRequest{}, err
+	}
+	rtpMsg.BodySize = bodySize
 	return rtpMsg, nil
 }
 
@@ -71,7 +82,7 @@ func ParseResponse(msg string) (RtspResponse, error) {
 	}
 	rtspResponse.StatusCode = statusCode
 	rtspResponse.Reason = statusLine[2]
-	err = parseHeader(msg, i, rtspResponse.Headers)
+	_, err = parseHeader(msg, i, rtspResponse.Headers)
 	if err != nil {
 		fmt.Printf("incorrect header line")
 		return RtspResponse{}, err
@@ -79,20 +90,20 @@ func ParseResponse(msg string) (RtspResponse, error) {
 	return rtspResponse, nil
 }
 
-func parseHeader(msg string, startIndex int, headerMap map[string]string) error {
-	for currentLine, startIndex := readline(msg, startIndex); currentLine != "\r\n"; currentLine, startIndex = readline(msg, startIndex) {
+func parseHeader(msg string, startIndex int, headerMap map[string]string) (int, error) {
+	startIndex2 := startIndex
+	for currentLine, startIndex2 := readline(msg, startIndex2); currentLine != "\r\n"; currentLine, startIndex2 = readline(msg, startIndex2) {
 		key, value, found := strings.Cut(currentLine, ":")
 		/// check that grammar is valid
 		if !found && currentLine != LineBreak {
 			fmt.Printf("incorrect header line: %v\n", currentLine)
-			return errors.New("incorrect header line")
+			return startIndex2, errors.New("incorrect header line")
 		}
 		if found {
 			headerMap[key] = value
 		}
-
 	}
-	return nil
+	return startIndex2, nil
 }
 
 func readline(msg string, i int) (string, int) {
