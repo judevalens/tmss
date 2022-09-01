@@ -1,5 +1,10 @@
 package rtsp
 
+import (
+	"encoding/base64"
+	"golang.org/x/exp/rand"
+)
+
 const SessionLen = 15
 
 type Session struct {
@@ -10,7 +15,7 @@ type Handler struct {
 }
 
 func (handler Handler) SetUpHandler(request RtspRequest, resWriter ResponseWriter) {
-	/*sessionBuf := make([]byte, SessionLen)
+	sessionBuf := make([]byte, SessionLen)
 	mediaId := request.Uri.Query().Get("media_id")
 
 	if len(mediaId) == 0 {
@@ -28,7 +33,6 @@ func (handler Handler) SetUpHandler(request RtspRequest, resWriter ResponseWrite
 	}
 
 	//TODO we probably should be able to create different transport based on the client
-	*/
 
 }
 func (handler Handler) AnnounceHandler(request RtspRequest, resWriter ResponseWriter) {
