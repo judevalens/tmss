@@ -1,4 +1,4 @@
-package rtsp_parser
+package rtsp
 
 import (
 	"bufio"
@@ -151,7 +151,5 @@ func readline(reader *bufio.Reader) (string, error) {
 			return buffer[:len(buffer)-2], nil
 		}
 	}
-	fmt.Printf("new line: from %v->%v, %v\n", i, absEndOfLine, msg[i:absEndOfLine])
-	fmt.Printf("EOL\n")
-	return msg[i:absEndOfLine], absEndOfLine + len(LineBreak)
+
 }

@@ -1,9 +1,11 @@
 package rtsp
 
+/*
 import (
 	"encoding/base64"
 	"golang.org/x/exp/rand"
 )
+
 
 const SessionLen = 15
 
@@ -31,6 +33,7 @@ func (handler Handler) SetUpHandler(request RtspRequest, resWriter ResponseWrite
 		}
 		sessionId = base64.URLEncoding.EncodeToString(sessionBuf)
 	}
+	_ = sessionId
 
 	//TODO we probably should be able to create different transport based on the client
 
@@ -50,3 +53,4 @@ func (handler Handler) PauseHandler(request RtspRequest, resWriter ResponseWrite
 func (handler Handler) TearDownHandler(request RtspRequest, resWriter ResponseWriter) {
 
 }
+*/

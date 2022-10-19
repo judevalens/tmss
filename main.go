@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"tmss/rtsp_parser"
+	"tmss/rtsp"
 )
 
 func main() {
@@ -18,7 +18,7 @@ func main() {
 		"\r\n" +
 		body
 	reader := strings.NewReader(rtpRequest)
-	req, err := rtsp_parser.ParseRequest(reader)
+	req, err := rtsp.ParseRequest(reader)
 	if err != nil {
 		fmt.Printf("err: %v\n", err)
 	}

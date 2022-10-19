@@ -1,14 +1,8 @@
 package rtsp
 
-import (
-	"fmt"
-	"log"
-	"net"
-	"strings"
-)
-
 const mtu = 4096
 
+/*
 const (
 	ANNOUNCE     = "ANNOUNCE"
 	GetParameter = "GET_PARAMETER"
@@ -105,6 +99,7 @@ func StartServer(addr net.Addr, router RtspRouter) {
 		go handleNewReq(conn, router)
 	}
 }
+
 func handleNewReq(conn net.Conn, router RtspRouter) {
 	buff := make([]byte, mtu)
 	for {
@@ -133,3 +128,4 @@ func handleNewReq(conn net.Conn, router RtspRouter) {
 }
 func HandleNewReq2(request RtspRequest, rtspWriter ResponseWriter) {
 }
+*/
