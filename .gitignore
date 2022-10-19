@@ -3,4 +3,7 @@ cmake-build-debug
 /.idea
 lib/mms/build
 
+*.interp
+*.tokens
+
 mms-go

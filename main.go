@@ -2,23 +2,22 @@ package main
 
 import (
 	"fmt"
-	"tmss/rtsp_parser"
+	"tmss/rtsp/schemas/request"
 )
 
 func main() {
 
-	rtpRequest := "" +
-		"SETUP rtsp://example.com/media.mp4/streamid=0 RTSP/10\r\n" +
-		"CSeq: 3\r\n" +
-		"Transport: RTP/AVP;unicast;client_port=8000-8001\r\n" +
-		"\r\n"
-
-	req, err := rtsp_parser.ParseRequest(rtpRequest)
+	req := "OPTIONSs rtsp://example.com/1090/920/media.mp4 RTSP/1.0\n" +
+		"CSeq: 1\n" +
+		"Require: implicit-play\n" +
+		"Proxy-Require: gzipped-messages\n" +
+		"\n"
+	rtspReq, err := request.ParseRtspReq(req)
 
 	if err != nil {
-		fmt.Printf("err: %v\n", err)
+		fmt.Printf("err in main: %v\n", err)
+		return
 	}
 
-	fmt.Printf("req: %v\n", req)
-
+	fmt.Printf("method: %v\n", rtspReq.Request.Method)
 }
