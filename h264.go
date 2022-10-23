@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"strconv"
+	"tmss/rtp"
 )
 
 const (
@@ -177,7 +178,7 @@ func (packet FUa) serialize(header []byte, data []byte, maxPacketSize int) [][]b
 		payloadFragment[0] = fuIndicator
 		payloadFragment[1] = fuHeader
 		copy(payloadFragment[2:], data[startIndex:endIndex])
-		rawPackets[i] = serializeRTPPacket(header, payloadFragment)
+		rawPackets[i] = rtp.serializeRTPPacket(header, payloadFragment)
 		startIndex += maxPacketSize
 	}
 	return rawPackets

@@ -13,15 +13,16 @@ func main() {
 		"SETUP rtsp://example.com/media.mp4/streamid=0 RTSP/10\r\n" +
 		"CSeq: 3\r\n" +
 		"Content-Length: " + strconv.Itoa(len(body)) + "\r\n" +
-		"Transport: RTP/AVP;unicast;\n" +
-		"client_port=8000-8001\r\n" +
+		"Transport: RTP/AVP;multicast;ttl=127;mode=\"PLAY\",RTP/AVP;unicast;client_port=3456-3457;mode=\"PLAY\"\r\n" +
 		"\r\n" +
 		body
 	reader := strings.NewReader(rtpRequest)
 	req, err := rtsp.ParseRequest(reader)
+	transports := rtsp.ParseTransport(req.Headers["Transport"])
 	if err != nil {
 		fmt.Printf("err: %v\n", err)
 	}
 	fmt.Printf("req: %v\n", string(req.Body) == body)
+	fmt.Printf("transports: %v\n", transports)
 
 }

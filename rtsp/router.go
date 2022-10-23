@@ -1,8 +1,12 @@
 package rtsp
 
+import (
+	"fmt"
+	"net"
+)
+
 const mtu = 4096
 
-/*
 const (
 	ANNOUNCE     = "ANNOUNCE"
 	GetParameter = "GET_PARAMETER"
@@ -16,27 +20,22 @@ const (
 	TEARDOWN     = "TEARDOWN"
 )
 
-const (
-	ContentLengthHeader = "Content-length"
-	SessionHeader       = "Session"
-)
-
-type RtspRouter struct {
+type Router struct {
 	name    string
-	Paths   map[string]*RtspRouter
+	Paths   map[string]*Router
 	handler RequestHandler
 }
 type ResponseWriter struct {
 	conn net.Conn
 }
-type RequestHandler func(request RtspRequest, rtspWriter ResponseWriter)
+type RequestHandler func(request Request, rtspWriter ResponseWriter)
 
-func NewRouter() RtspRouter {
-	return RtspRouter{
-		Paths: map[string]*RtspRouter{},
+func NewRouter() Router {
+	return Router{
+		Paths: map[string]*Router{},
 	}
 }
-func Print(paths map[string]*RtspRouter, level int) {
+func Print(paths map[string]*Router, level int) {
 	offset := ""
 
 	for i := 0; i < level; i++ {
@@ -47,6 +46,8 @@ func Print(paths map[string]*RtspRouter, level int) {
 		Print(pathS.Paths, len(pathP)+level+3)
 	}
 }
+
+/*
 func (router RtspRouter) AddRoute(method string, path string, handler RequestHandler) {
 	path = method + path
 	paths := strings.Split(path, "/")

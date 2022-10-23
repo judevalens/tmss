@@ -1,9 +1,10 @@
-package main
+package rtp
 
 import (
 	"encoding/binary"
 	"fmt"
 	"strconv"
+	"tmss"
 )
 
 const RtpHeaderSize = 16
@@ -107,9 +108,9 @@ func getRtpSequence() int16 {
 
 func parseH264Payload() RtpPayload {
 	//TODO	log.Fatal("Need to be implemented")
-	return SingleNalPacket{}
+	return main.SingleNalPacket{}
 }
 func parseAccPayload() RtpPayload {
 	//TODO wlog.Fatal("Need to be implemented")
-	return SingleNalPacket{}
+	return main.SingleNalPacket{}
 }
