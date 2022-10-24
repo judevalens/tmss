@@ -25,4 +25,11 @@ func main() {
 	fmt.Printf("req: %v\n", string(req.Body) == body)
 	fmt.Printf("transports: %v\n", transports)
 
+	parseRange, err := rtsp.ParseRange("12:22:33-22:22:33")
+	if err != nil {
+		println(err)
+		return
+	}
+	_ = parseRange
+
 }

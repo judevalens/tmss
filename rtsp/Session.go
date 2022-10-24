@@ -32,4 +32,5 @@ func (session Session) SessionStart() error {
 		return UnsupportedProfileErr
 	}
 
+	return nil
 }

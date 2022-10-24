@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"strconv"
-	"tmss"
 )
 
 const RtpHeaderSize = 16
@@ -16,7 +15,7 @@ const (
 )
 
 type RtpPacket struct {
-	header  RtpHeader
+	Header  RtpHeader
 	payload RtpPayload
 }
 
@@ -80,7 +79,7 @@ func serializeRtpHeader(header RtpHeader) []byte {
 	return rawHeader
 }
 
-func serializeRTPPacket(header []byte, payload []byte) []byte {
+func SerializeRTPPacket(header []byte, payload []byte) []byte {
 
 	rawPacket := make([]byte, len(header)+len(payload))
 	copy(rawPacket, header)
@@ -88,7 +87,7 @@ func serializeRTPPacket(header []byte, payload []byte) []byte {
 	return rawPacket
 }
 
-func parseRtpPacket(packet []byte, packetSize int) RtpPacket {
+func ParseRtpPacket(packet []byte, packetSize int) RtpPacket {
 	rtpHeader := parseRtpHeader(packet)
 	var rtpPayload RtpPayload
 	switch rtpHeader.PayloadType {
@@ -98,7 +97,7 @@ func parseRtpPacket(packet []byte, packetSize int) RtpPacket {
 		rtpPayload = parseAccPayload()
 	}
 	return RtpPacket{
-		header:  rtpHeader,
+		Header:  rtpHeader,
 		payload: rtpPayload,
 	}
 }
@@ -108,9 +107,9 @@ func getRtpSequence() int16 {
 
 func parseH264Payload() RtpPayload {
 	//TODO	log.Fatal("Need to be implemented")
-	return main.SingleNalPacket{}
+	return SingleNalPacket{}
 }
 func parseAccPayload() RtpPayload {
 	//TODO wlog.Fatal("Need to be implemented")
-	return main.SingleNalPacket{}
+	return SingleNalPacket{}
 }

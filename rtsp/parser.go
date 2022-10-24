@@ -6,14 +6,18 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const LineBreak = "\r\n"
 
 const RtspVersion = "RTSP/1.0"
-
+const (
+	TimeLayout = "15:04:05.000"
+)
 const (
 	TransportHeader     = "Transport"
 	CSeqHeader          = "CSeq"
@@ -50,6 +54,9 @@ type Transport struct {
 	Mode           string
 }
 
+type Range struct {
+	startTime time.Time
+}
 type Response struct {
 	Version    string
 	StatusCode int
@@ -236,6 +243,43 @@ func ParseTransport(input string) []Transport {
 	}
 
 	return transports
+}
+
+func ParseRange(input string) (Range, error) {
+	myRange := Range{}
+
+	// https://www.rfc-editor.org/rfc/rfc2326.html#page-17
+	nptHhmmss := "(?P<timeIso>\\d+:\\d{1,2}:\\d{1,2}(\\.\\d*)*)"
+	nptSec := "(?P<timeUnix>\\d+\\.\\d+)"
+	nptTime := fmt.Sprintf("((?P<now>now)|%s|%s)", nptHhmmss, nptSec)
+
+	start := fmt.Sprintf("(?P<start>%s)", nptTime)
+	end := fmt.Sprintf("(?P<end>%s)", nptTime)
+	end2 := fmt.Sprintf("(?P<end2>%s)", nptTime)
+
+	startEnd := regexp.MustCompile(fmt.Sprintf("^(%s-(%s)?)$", start, end))
+	endOnly := regexp.MustCompile(fmt.Sprintf("(-%s)", end))
+	_ = endOnly
+	nptRange := fmt.Sprintf("^((%s-(%s)?)|(-%s))$", nptTime, nptTime, nptTime)
+	nptRange2 := fmt.Sprintf("^((%s-(%s)?)|(-%s))$", start, end, end2)
+	println(nptRange)
+	expr, err := regexp.Compile(nptRange2)
+	if err != nil {
+		println(err)
+		return Range{}, err
+	}
+	res := expr.FindStringSubmatch(input)
+	fmt.Printf("res: %s\n", res)
+	fmt.Printf("res2: %s, index: %v\n", res[expr.SubexpIndex("now")], expr.SubexpNames())
+	_ = myRange
+	if startEnd.MatchString(input) {
+		if err != nil {
+			fmt.Printf("can't parse time, %v\n", err)
+			return Range{}, err
+		}
+	}
+
+	return Range{}, nil
 }
 
 func (t Transport) Serialize() string {

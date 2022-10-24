@@ -18,7 +18,7 @@ const MaxFrameBufferSize = 10
 
 type VideoTransmitter struct {
 	mediaBuffer *C.struct_MediaBuffer
-	packetChan  chan chan NalUnit
+	packetChan  chan chan rtp.NalUnit
 }
 
 func initVideoTransmitter() *VideoTransmitter {
@@ -48,7 +48,7 @@ func startRtpServer(ctx context.Context, addr2 string) {
 		i++
 		fmt.Printf("#%v: new msg, msg len: %v\n", i, packetSize)
 		//	handleRtpSession(context.Background(), buffer, addr)
-		packet := rtp.parseRtpPacket(buffer, packetSize)
+		packet := rtp.ParseRtpPacket(buffer, packetSize)
 
 		rtpPacketChannel <- packet
 	}
@@ -102,7 +102,7 @@ func startPacketHandler(ctx context.Context, rtpPacketChannel chan rtp.RtpPacket
 				case <-childCtx.Done():
 					return
 				case rtpPacket := <-rtpChannel2:
-					fmt.Printf("worker #%v: new packet received,rtp version = %v, payloadtype = %v,  timestamp = %v, seqNumber = %v\n", workerN, rtpPacket.header.Version, rtpPacket.header.PayloadType, rtpPacket.header.Timestamp, rtpPacket.header.SequenceNumber)
+					fmt.Printf("worker #%v: new packet received,rtp version = %v, payloadtype = %v,  timestamp = %v, seqNumber = %v\n", workerN, rtpPacket.Header.Version, rtpPacket.Header.PayloadType, rtpPacket.Header.Timestamp, rtpPacket.Header.SequenceNumber)
 				}
 			}
 		}(childCtx, rtpPacketChannel, i)
@@ -152,8 +152,8 @@ func (t VideoTransmitter) bufferUP() {
 	}
 }
 
-func (t VideoTransmitter) buildHdrHeader() NAlHeader {
-	return NAlHeader{}
+func (t VideoTransmitter) buildHdrHeader() rtp.NAlHeader {
+	return rtp.NAlHeader{}
 }
 
 func FillBuffer() {
