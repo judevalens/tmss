@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/url"
 	"regexp"
 	"strconv"
@@ -55,7 +56,9 @@ type Transport struct {
 }
 
 type Range struct {
-	startTime time.Time
+	startTime float64
+	endTime   float64
+	liveEvent bool
 }
 type Response struct {
 	Version    string
@@ -249,39 +252,93 @@ func ParseRange(input string) (Range, error) {
 	myRange := Range{}
 
 	// https://www.rfc-editor.org/rfc/rfc2326.html#page-17
-	nptHhmmss := "(?P<timeIso>\\d+:\\d{1,2}:\\d{1,2}(\\.\\d*)*)"
-	nptSec := "(?P<timeUnix>\\d+\\.\\d+)"
-	nptTime := fmt.Sprintf("((?P<now>now)|%s|%s)", nptHhmmss, nptSec)
-
-	start := fmt.Sprintf("(?P<start>%s)", nptTime)
-	end := fmt.Sprintf("(?P<end>%s)", nptTime)
-	end2 := fmt.Sprintf("(?P<end2>%s)", nptTime)
-
-	startEnd := regexp.MustCompile(fmt.Sprintf("^(%s-(%s)?)$", start, end))
+	nptHhmmss := regexp.MustCompile("^(?P<timeIso>\\d+:\\d{1,2}:\\d{1,2}(\\.\\d*)*)$")
+	nptSec := regexp.MustCompile("^(?P<timeUnix>\\d+(\\.\\d+)*)$")
+	nptTime := regexp.MustCompile(fmt.Sprintf("((?P<now>now)|%s|%s)", regexToString(nptHhmmss), regexToString(nptSec)))
+	start := regexp.MustCompile(fmt.Sprintf("(?P<start>%s)", nptTime))
+	end := regexp.MustCompile(fmt.Sprintf("(?P<end>%s)", nptTime))
 	endOnly := regexp.MustCompile(fmt.Sprintf("(-%s)", end))
 	_ = endOnly
-	nptRange := fmt.Sprintf("^((%s-(%s)?)|(-%s))$", nptTime, nptTime, nptTime)
-	nptRange2 := fmt.Sprintf("^((%s-(%s)?)|(-%s))$", start, end, end2)
-	println(nptRange)
-	expr, err := regexp.Compile(nptRange2)
-	if err != nil {
-		println(err)
-		return Range{}, err
-	}
-	res := expr.FindStringSubmatch(input)
+	nptRange := regexp.MustCompile(fmt.Sprintf("^npt=((%s-(%s)?)|(-%s))$", start, end, end))
+	println(nptRange.String())
+
+	res := nptRange.FindStringSubmatch(input)
 	fmt.Printf("res: %s\n", res)
-	fmt.Printf("res2: %s, index: %v\n", res[expr.SubexpIndex("now")], expr.SubexpNames())
+	//fmt.Printf("res2: %s, index: %v\n", res[nptRange.SubexpIndex("now")], nptRange.SubexpNames())
 	_ = myRange
-	if startEnd.MatchString(input) {
-		if err != nil {
-			fmt.Printf("can't parse time, %v\n", err)
-			return Range{}, err
+
+	// check start time format // can be hh:mm:ss or X seconds
+	startTimeInput := res[nptRange.SubexpIndex("start")]
+	if nptSec.MatchString(startTimeInput) {
+		println("range in sec")
+		myRange.startTime, _ = strconv.ParseFloat(startTimeInput, 64)
+	} else if nptHhmmss.MatchString(startTimeInput) {
+		myRange.startTime = timeToSec(buildIsoTime(startTimeInput))
+	} else {
+		println("no match 1")
+		myRange.liveEvent = true
+	}
+	// end time is optional, check if its present
+	endTimeInput := res[nptRange.SubexpIndex("end")]
+
+	if res[nptRange.SubexpIndex("end")] != "" {
+		// check end time format // can be hh:mm:ss or X seconds
+		if nptSec.MatchString(endTimeInput) {
+			println("no match 4")
+			myRange.endTime, _ = strconv.ParseFloat(endTimeInput, 64)
+		} else if nptHhmmss.MatchString(endTimeInput) {
+			myRange.endTime = timeToSec(buildIsoTime(endTimeInput))
+		} else {
+			myRange.liveEvent = true
+			println("no match 2")
+
 		}
 	}
+	fmt.Printf("start: %f, end: %f\n", myRange.startTime, myRange.endTime)
+	fmt.Printf("range: %v\n", myRange)
 
-	return Range{}, nil
+	return myRange, nil
 }
 
 func (t Transport) Serialize() string {
 	return ""
+}
+
+func buildIsoTime(startTimeInput string) *time.Time {
+	isoTimeExpr := regexp.MustCompile("[:.]")
+	timeParts := isoTimeExpr.Split(startTimeInput, -1)
+	var startTime time.Time
+
+	if len(timeParts) == 3 {
+		startTime = time.Date(0, 0, 0, parseInt(timeParts[0]), parseInt(timeParts[1]), parseInt(timeParts[2]), 0, time.Local)
+	} else if len(timeParts) == 4 {
+		float, err := strconv.ParseFloat("."+timeParts[3], 32)
+		if err != nil {
+			return nil
+		}
+		tNano := float * float64(time.Second.Nanoseconds())
+		startTime = time.Date(0, 0, 0, parseInt(timeParts[0]), parseInt(timeParts[1]), parseInt(timeParts[2]), int(math.Ceil(tNano)), time.Local)
+	}
+	return &startTime
+}
+
+func parseInt(input string) int {
+	n, err := strconv.Atoi(input)
+	if err != nil {
+		panic(err)
+		return 0
+	}
+	return n
+
+}
+
+func timeToSec(t *time.Time) float64 {
+	tSec := (float64(t.Hour()) * 60 * 60) + (float64(t.Minute()) * 60) + float64(t.Second()) + float64(t.Nanosecond())/(1000*1000*1000)
+	return math.Round(tSec*1000) / 1000
+}
+
+// Removes the start of line and end of line anchors in a sub regex
+func regexToString(regex *regexp.Regexp) string {
+	r := strings.TrimPrefix(regex.String(), "^")
+	return strings.TrimSuffix(r, "$")
 }
