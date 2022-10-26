@@ -304,6 +304,7 @@ func (t Transport) Serialize() string {
 	return ""
 }
 
+// Misc functions
 func buildIsoTime(startTimeInput string) *time.Time {
 	isoTimeExpr := regexp.MustCompile("[:.]")
 	timeParts := isoTimeExpr.Split(startTimeInput, -1)

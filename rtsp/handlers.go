@@ -86,6 +86,7 @@ func (handler Handler) DescribeHandler(request Request, resWriter ResponseWriter
 		Headers: map[string]string{
 			CSeqHeader:          request.Headers[CSeqHeader],
 			ContentLengthHeader: strconv.Itoa(len(descriptionRaw)),
+			SessionHeader:       request.Headers[SessionHeader],
 		},
 		Body: []byte(descriptionRaw),
 	}
@@ -96,10 +97,11 @@ func (handler Handler) DescribeHandler(request Request, resWriter ResponseWriter
 	}
 }
 
-/*
-func (handler Handler) PlayHandler(request RtspRequest, resWriter ResponseWriter) {
+func (handler Handler) PlayHandler(request Request, resWriter ResponseWriter) {
 
 }
+
+/*
 func (handler Handler) PauseHandler(request RtspRequest, resWriter ResponseWriter) {
 
 }

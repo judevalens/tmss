@@ -25,7 +25,7 @@ func main() {
 	fmt.Printf("req: %v\n", string(req.Body) == body)
 	fmt.Printf("transports: %v\n", transports)
 
-	parseRange, err := rtsp.ParseRange("npt=now-")
+	parseRange, err := rtsp.ParseRange("npt=2334.55-39494.44")
 	if err != nil {
 		println(err)
 		return
