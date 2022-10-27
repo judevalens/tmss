@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net"
 	"strings"
+	"tmss/rtsp/headers"
 )
 
 const (
@@ -19,22 +20,22 @@ type Session struct {
 	TransmissionType string
 	AudioPort        int
 	VideoPort        int
-	Transport        Transport
-	queuePlayRequest chan Range
-	deQueue          chan *Range
-	pauseRequest     chan Range
-	plays            []Range
+	Transport        headers.Transport
+	queuePlayRequest chan headers.Range
+	deQueue          chan *headers.Range
+	pauseRequest     chan headers.Range
+	plays            []headers.Range
 	playsWatcher     chan bool
-	currentRange     Range
+	currentRange     headers.Range
 	resumePoint      float64
 	MediaStreamer
 }
 
 type MediaStreamer interface {
 	initialize(mediaID string)
-	play(timeRange Range)
-	pause(timeRange Range)
-	getCommandChannel() chan Range
+	play(timeRange headers.Range)
+	pause(timeRange headers.Range)
+	getCommandChannel() chan headers.Range
 }
 
 func OpenNewSession(mediaId string, addr net.Addr) Session {
@@ -48,12 +49,12 @@ func (session Session) SessionStart() error {
 	return nil
 }
 
-func (session Session) PlayPause(pause bool, timeRange Range) {
+func (session Session) PlayPause(pause bool, timeRange headers.Range) {
 	for {
 		select {
 		// handle pause requests
 		case pause := <-session.pauseRequest:
-			if pause.startTime < session.currentRange.startTime || pause.startTime > session.currentRange.endTime {
+			if pause.StartTime < session.currentRange.StartTime || pause.StartTime > session.currentRange.EndTime {
 				// todo RETURN ERROR bc PAUSE time is outside of any queued PLAY range
 			}
 			// send the pause command to the streamer
@@ -75,10 +76,10 @@ func (session Session) PlayPause(pause bool, timeRange Range) {
 	}
 }
 
-func (session Session) Play(streamRange *Range) {
+func (session Session) Play(streamRange *headers.Range) {
 	if streamRange == nil {
-		streamRange = &Range{
-			startTime: session.resumePoint,
+		streamRange = &headers.Range{
+			StartTime: session.resumePoint,
 		}
 	}
 	session.queuePlayRequest <- *streamRange
@@ -87,7 +88,7 @@ func (session Session) Play(streamRange *Range) {
 func (session Session) queueFrame() {
 	for {
 
-		session.deQueue <- &Range{}
+		session.deQueue <- &headers.Range{}
 		r := <-session.deQueue
 
 		if r == nil {

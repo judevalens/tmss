@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 	"tmss/rtsp"
+	"tmss/rtsp/headers"
 )
 
 func main() {
@@ -17,15 +18,15 @@ func main() {
 		"\r\n" +
 		body
 	reader := strings.NewReader(rtpRequest)
-	req, err := rtsp.ParseRequest2(reader)
-	transports := rtsp.ParseTransport(req.Header.Get(rtsp.TransportHeader))
+	req, err := rtsp.ParseRequest(reader)
+	transports := headers.ParseTransport(req.Header.Get(rtsp.TransportHeader))
 	if err != nil {
 		fmt.Printf("err: %v\n", err)
 	}
 	fmt.Printf("req: %v\n", *req)
 	fmt.Printf("transports: %v\n", transports)
 
-	parseRange, err := rtsp.ParseRange("npt=2334.55-39494.44")
+	parseRange, err := headers.ParseRange("npt=2334.55-39494.44")
 	if err != nil {
 		println(err)
 		return

@@ -1,74 +1,19 @@
 package rtsp
 
 import (
-	"fmt"
 	"github.com/gorilla/mux"
-	"net"
-	"net/http"
 )
 
 const mtu = 4096
 
-const (
-	ANNOUNCE     = "ANNOUNCE"
-	DESCRIBE     = "DESCRIBE"
-	GetParameter = "GET_PARAMETER"
-	OPTIONS      = "OPTIONS"
-	PAUSE        = "PAUSE"
-	PLAY         = "PLAY"
-	RECORD       = "RECORD"
-	REDIRECT     = "REDIRECT"
-	SETUP        = "SETUP"
-	SetParameter = "SET_PARAMETER"
-	TEARDOWN     = "TEARDOWN"
-)
-
-type Router struct {
-	name    string
-	Paths   map[string]*Router
-	handler RequestHandler
-}
-type ResponseWriter struct {
-	*http.Response
-	conn        net.Conn
-	isHeaderSet bool
-}
-
-func (r ResponseWriter) Header() http.Header {
-	return r.Response.Header
-}
-
-func (r ResponseWriter) Write(bytes []byte) (int, error) {
-	if !r.isHeaderSet {
-		r.WriteHeader(http.StatusOK)
-	}
-	return r.Write([]byte(serializeResponse(*r.Response)))
-}
-
-func (r ResponseWriter) WriteHeader(statusCode int) {
-	r.Response.StatusCode = statusCode
-	r.Response.Status = http.StatusText(statusCode)
-}
-
-type RequestHandler func(request Request, rtspWriter ResponseWriter)
+const ()
 
 func NewRouter(handler Handler) *mux.Router {
 	r := mux.NewRouter()
+	r.Use(handler.setSession)
 	r.Methods(ANNOUNCE, DESCRIBE, OPTIONS, PLAY, PLAY, SETUP, TEARDOWN)
 	r.HandleFunc("media/{id}", handler.SetUpHandler)
 	return r
-}
-func Print(paths map[string]*Router, level int) {
-	offset := ""
-
-	for i := 0; i < level; i++ {
-		offset += " "
-	}
-	for pathP, pathS := range paths {
-		fmt.Printf("%v|-> %v\n", offset, pathP)
-		Print(pathS.Paths, len(pathP)+level+3)
-	}
-
 }
 
 /*

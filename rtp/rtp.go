@@ -50,9 +50,9 @@ func parseRtpHeader(data []byte) RtpHeader {
 		Timestamp:      binary.BigEndian.Uint32(data[4:8]),
 		SSRC:           binary.BigEndian.Uint32(data[8:12]),
 	}
-	/**for i := 0; i < (int)(header.CsrcCount); i++ {
+	/**for i := 0; i < (int)(headers.CsrcCount); i++ {
 			s := 12 + (4 * i)
-			header.CSRC = append(header.CSRC, binary.BigEndian.Uint32(data[s:s+4]))
+			headers.CSRC = append(headers.CSRC, binary.BigEndian.Uint32(data[s:s+4]))
 		}
 
 		fmt.Printf("%v", data[:16])
