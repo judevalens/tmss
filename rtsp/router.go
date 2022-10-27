@@ -2,13 +2,16 @@ package rtsp
 
 import (
 	"fmt"
+	"github.com/gorilla/mux"
 	"net"
+	"net/http"
 )
 
 const mtu = 4096
 
 const (
 	ANNOUNCE     = "ANNOUNCE"
+	DESCRIBE     = "DESCRIBE"
 	GetParameter = "GET_PARAMETER"
 	OPTIONS      = "OPTIONS"
 	PAUSE        = "PAUSE"
@@ -26,14 +29,34 @@ type Router struct {
 	handler RequestHandler
 }
 type ResponseWriter struct {
-	conn net.Conn
+	*http.Response
+	conn        net.Conn
+	isHeaderSet bool
 }
+
+func (r ResponseWriter) Header() http.Header {
+	return r.Response.Header
+}
+
+func (r ResponseWriter) Write(bytes []byte) (int, error) {
+	if !r.isHeaderSet {
+		r.WriteHeader(http.StatusOK)
+	}
+	return r.Write([]byte(serializeResponse(*r.Response)))
+}
+
+func (r ResponseWriter) WriteHeader(statusCode int) {
+	r.Response.StatusCode = statusCode
+	r.Response.Status = http.StatusText(statusCode)
+}
+
 type RequestHandler func(request Request, rtspWriter ResponseWriter)
 
-func NewRouter() Router {
-	return Router{
-		Paths: map[string]*Router{},
-	}
+func NewRouter(handler Handler) *mux.Router {
+	r := mux.NewRouter()
+	r.Methods(ANNOUNCE, DESCRIBE, OPTIONS, PLAY, PLAY, SETUP, TEARDOWN)
+	r.HandleFunc("media/{id}", handler.SetUpHandler)
+	return r
 }
 func Print(paths map[string]*Router, level int) {
 	offset := ""
@@ -45,6 +68,7 @@ func Print(paths map[string]*Router, level int) {
 		fmt.Printf("%v|-> %v\n", offset, pathP)
 		Print(pathS.Paths, len(pathP)+level+3)
 	}
+
 }
 
 /*

@@ -26,7 +26,7 @@ type Session struct {
 	plays            []Range
 	playsWatcher     chan bool
 	currentRange     Range
-
+	resumePoint      float64
 	MediaStreamer
 }
 
@@ -73,6 +73,15 @@ func (session Session) PlayPause(pause bool, timeRange Range) {
 			session.plays = session.plays[1:]
 		}
 	}
+}
+
+func (session Session) Play(streamRange *Range) {
+	if streamRange == nil {
+		streamRange = &Range{
+			startTime: session.resumePoint,
+		}
+	}
+	session.queuePlayRequest <- *streamRange
 }
 
 func (session Session) queueFrame() {

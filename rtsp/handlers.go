@@ -2,6 +2,7 @@ package rtsp
 
 import (
 	"encoding/base64"
+	"github.com/gorilla/mux"
 	"github.com/pion/sdp"
 	"golang.org/x/exp/rand"
 	"log"
@@ -19,17 +20,17 @@ type Handler struct {
 	sessions map[string]Session
 }
 
-func (handler Handler) SetUpHandler(request Request, resWriter ResponseWriter) {
+func (handler Handler) SetUpHandler(resWriter http.ResponseWriter, request *http.Request) {
 	sessionBuf := make([]byte, SessionLen)
-	mediaId := request.Uri.Query().Get("media_id")
+	mediaId := mux.Vars(request)["id"]
 
 	if len(mediaId) == 0 {
 		//TODO handle missing media
 		return
 	}
 
-	sessionId, found := request.Headers[SessionHeader]
-	if !found {
+	sessionId := request.Header.Get(SessionHeader)
+	if sessionId == "" {
 		_, err := rand.Read(sessionBuf)
 		if err != nil {
 			return
@@ -38,7 +39,7 @@ func (handler Handler) SetUpHandler(request Request, resWriter ResponseWriter) {
 	}
 	_ = sessionId
 
-	transports := ParseTransport(request.Headers["Transport"])
+	transports := ParseTransport(request.Header.Get(TransportHeader))
 	handler.sessions[sessionId] = Session{
 		Transport: transports[0],
 	}
@@ -49,9 +50,9 @@ func (handler Handler) SetUpHandler(request Request, resWriter ResponseWriter) {
 		Reason:     "OK",
 	}
 	res.Headers[TransportHeader] = DefaultTransport().Serialize()
-	res.Headers[CSeqHeader] = request.Headers[CSeqHeader]
+	res.Headers[CSeqHeader] = request.Header.Get(CSeqHeader)
 
-	_, err := resWriter.conn.Write([]byte(serializeResponse(res)))
+	_, err := resWriter.Write([]byte("body"))
 	if err != nil {
 		log.Fatal("Failed to send res to client")
 		return
@@ -79,18 +80,12 @@ func (handler Handler) DescribeHandler(request Request, resWriter ResponseWriter
 	sessionDescription := &sdp.SessionDescription{}
 	descriptionRaw := sessionDescription.Marshal()
 
-	res := Response{
-		StatusCode: http.StatusOK,
-		Reason:     http.StatusText(http.StatusOK),
-		Version:    RtspVersion,
-		Headers: map[string]string{
-			CSeqHeader:          request.Headers[CSeqHeader],
-			ContentLengthHeader: strconv.Itoa(len(descriptionRaw)),
-			SessionHeader:       request.Headers[SessionHeader],
-		},
-		Body: []byte(descriptionRaw),
+	resWriter.Response.Header = map[string][]string{
+		CSeqHeader:          {request.Headers[CSeqHeader]},
+		ContentLengthHeader: {strconv.Itoa(len(descriptionRaw))},
+		SessionHeader:       {request.Headers[SessionHeader]},
 	}
-	_, err := resWriter.conn.Write([]byte(serializeResponse(res)))
+	_, err := resWriter.conn.Write([]byte(descriptionRaw))
 	if err != nil {
 		log.Fatalf("cannot send res,%v\n", err)
 		return
@@ -98,7 +93,20 @@ func (handler Handler) DescribeHandler(request Request, resWriter ResponseWriter
 }
 
 func (handler Handler) PlayHandler(request Request, resWriter ResponseWriter) {
+	var rangeHeader *Range
+	if rangerHeaderString, found := request.Headers[RangeHeader]; found {
+		header, err := ParseRange(rangerHeaderString)
+		if err == nil {
+			rangeHeader = &header
+		}
+	}
+	request.session.Play(rangeHeader)
 
+	// we should check if the session is still active
+	_, err := resWriter.Write([]byte{})
+	if err != nil {
+		return
+	}
 }
 
 /*

@@ -17,12 +17,12 @@ func main() {
 		"\r\n" +
 		body
 	reader := strings.NewReader(rtpRequest)
-	req, err := rtsp.ParseRequest(reader)
-	transports := rtsp.ParseTransport(req.Headers["Transport"])
+	req, err := rtsp.ParseRequest2(reader)
+	transports := rtsp.ParseTransport(req.Header.Get(rtsp.TransportHeader))
 	if err != nil {
 		fmt.Printf("err: %v\n", err)
 	}
-	fmt.Printf("req: %v\n", string(req.Body) == body)
+	fmt.Printf("req: %v\n", *req)
 	fmt.Printf("transports: %v\n", transports)
 
 	parseRange, err := rtsp.ParseRange("npt=2334.55-39494.44")
