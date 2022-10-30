@@ -2,6 +2,8 @@ package rtsp
 
 import (
 	"github.com/gorilla/mux"
+	"net"
+	"net/http"
 )
 
 const mtu = 4096
@@ -14,6 +16,33 @@ func NewRouter(handler Handler) *mux.Router {
 	r.Methods(ANNOUNCE, DESCRIBE, OPTIONS, PLAY, PLAY, SETUP, TEARDOWN)
 	r.HandleFunc("media/{id}", handler.SetUpHandler)
 	return r
+}
+
+func StartServer(router *mux.Router) {
+	tcp, err := net.ListenTCP("tcp", &net.TCPAddr{Port: 554})
+	if err != nil {
+		return
+	}
+	for {
+		acceptTCP, err := tcp.AcceptTCP()
+		if err != nil {
+			return
+		}
+
+		request, err := ParseRequest(acceptTCP)
+		if err != nil {
+			println(err)
+		}
+		go func() {
+			router.ServeHTTP(ResponseWriter{
+				Response: &http.Response{
+					Proto: RtspVersion,
+				},
+				conn: acceptTCP,
+			}, request)
+		}()
+	}
+
 }
 
 /*

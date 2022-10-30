@@ -1,7 +1,9 @@
 package rtsp
 
 import (
+	"github.com/stretchr/testify/assert"
 	"io"
+	"net/http"
 	"net/url"
 	"reflect"
 	"strconv"
@@ -40,30 +42,32 @@ func TestParseRequest(t *testing.T) {
 	tests := []struct {
 		name    string
 		args    args
-		want    Request
+		want    *http.Request
 		wantErr bool
+		assert  func(got *http.Request, want *http.Request, err error, wantErr bool)
 	}{
 		{
-			name: "Test parsing valid rtsp request",
-			want: Request{
-				Method:  "SETUP",
-				Version: "RTSP/1.0",
-				Uri: func() *url.URL {
+			name:    "Test parsing valid rtsp request",
+			wantErr: false,
+			want: &http.Request{
+				Method: "SETUP",
+				Proto:  RtspVersion,
+				URL: func() *url.URL {
 					parse, err := url.Parse("rtsp://example.com/media.mp4/streamid=0")
 					if err != nil {
 						return nil
 					}
 					return parse
 				}(),
-				Headers: func() map[string]string {
+				Header: func() map[string][]string {
 					setUp()
-					return map[string]string{
-						"CSeq":           "3",
-						"Transport":      "RTP/AVP;multicast;ttl=127;mode=\"PLAY\",RTP/AVP;unicast;client_port=3456-3457;mode=\"PLAY\"",
-						"Content-Length": strconv.Itoa(len(body)),
+					return map[string][]string{
+						CSeqHeader:          {"3"},
+						TransportHeader:     {"RTP/AVP;multicast;ttl=127;mode=\"PLAY\",RTP/AVP;unicast;client_port=3456-3457;mode=\"PLAY\""},
+						ContentLengthHeader: {strconv.Itoa(len(body))},
 					}
 				}(),
-				Body: []byte(body),
+				Body: io.NopCloser(strings.NewReader(body)),
 			},
 			args: args{
 				reader: func() io.Reader {
@@ -71,47 +75,41 @@ func TestParseRequest(t *testing.T) {
 					return strings.NewReader(req)
 				}(),
 			},
+			assert: func(got *http.Request, want *http.Request, err error, wantErr bool) {
+				if (err != nil) != wantErr {
+					t.Errorf("ParseRequest() error = %v, wantErr %v\n", err, wantErr)
+				}
+				assert.Equal(t, want.URL, got.URL)
+				assert.Equal(t, want.Header, got.Header)
+				assert.Equal(t, want.Proto, got.Proto)
+				assert.Equal(t, want.Method, got.Method)
+				assert.True(t, reflect.DeepEqual(want.Header, got.Header))
+				wantedBody, _ := io.ReadAll(want.Body)
+				gotBody, _ := io.ReadAll(got.Body)
+				assert.Equal(t, wantedBody, gotBody)
+			},
 		},
 		{
-			name: "Test parsing rtsp request with invalid statusLine",
-			want: Request{
-				Method:  "SETUP",
-				Version: "RTSP/1.0",
-				Uri: func() *url.URL {
-					parse, err := url.Parse("rtsp://example.com/media.mp4/streamid=0")
-					if err != nil {
-						return nil
-					}
-					return parse
-				}(),
-				Headers: func() map[string]string {
-					setUp()
-					return map[string]string{
-						"CSeq":           "3",
-						"Transport":      "RTP/AVP;multicast;ttl=127;mode=\"PLAY\",RTP/AVP;unicast;client_port=3456-3457;mode=\"PLAY\"",
-						"Content-Length": strconv.Itoa(len(body)),
-					}
-				}(),
-				Body: []byte(body),
-			},
+			name:    "Test parsing rtsp request with invalid statusLine",
+			want:    nil,
+			wantErr: true,
 			args: args{
 				reader: func() io.Reader {
 					setUp()
 					return strings.NewReader(invalidReq)
 				}(),
 			},
+			assert: func(got *http.Request, want *http.Request, err error, wantErr bool) {
+				if (err != nil) != wantErr {
+					t.Errorf("ParseRequest() error = %v, wantErr %v\n", err, wantErr)
+				}
+			},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := ParseRequest(tt.args.reader)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("ParseRequest() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("ParseRequest() got = %v, want %v", got, tt.want)
-			}
+			tt.assert(got, tt.want, err, tt.wantErr)
 		})
 	}
 }

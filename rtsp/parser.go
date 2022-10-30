@@ -35,7 +35,7 @@ const (
 )
 const (
 	TransportHeader     = "Transport"
-	CSeqHeader          = "CSeq"
+	CSeqHeader          = "Cseq"
 	ContentLengthHeader = "Content-Length"
 	SessionHeader       = "Session"
 	RangeHeader         = "Range"
