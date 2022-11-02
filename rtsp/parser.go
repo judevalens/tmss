@@ -39,6 +39,7 @@ const (
 	ContentLengthHeader = "Content-Length"
 	SessionHeader       = "Session"
 	RangeHeader         = "Range"
+	PublicHeader        = "Public"
 )
 
 type Serializable interface {
@@ -145,19 +146,35 @@ func ParseResponse(reader io.Reader) (*http.Response, error) {
 	}
 	return response, nil
 }
-func serializeResponse(response http.Response) string {
-	rawResponse := fmt.Sprintf("%s %d %s \r\n", response.Proto, response.StatusCode, response.Status)
+func serializeResponse(response http.Response) (string, error) {
+	rawResponse := fmt.Sprintf("%s %d %s\r\n", response.Proto, response.StatusCode, response.Status)
+	rawResponse += fmt.Sprintf("%s: %s\r\n", "CSeq", response.Header.Get(CSeqHeader))
+	response.Header.Del(CSeqHeader)
 	for key, val := range response.Header {
-		rawResponse += fmt.Sprintf("%s: %s\r\n", key, val)
+		values := ""
+
+		// append multiple headers into a single header value
+		for i, s := range val {
+			values += s
+			if i+1 < len(val) {
+				values += ","
+			}
+		}
+		rawResponse += fmt.Sprintf("%s: %s\r\n", key, values)
 	}
+
 	rawResponse += "\r\n"
-	buff := make([]byte, response.ContentLength)
-	_, err := response.Body.Read(buff)
-	if err != nil {
-		return ""
+
+	if response.ContentLength > 0 {
+		buff := make([]byte, response.ContentLength)
+		_, err := response.Body.Read(buff)
+		if err != nil {
+			return "", err
+		}
+		rawResponse += string(buff)
 	}
-	rawResponse += string(buff)
-	return rawResponse
+
+	return rawResponse, nil
 }
 func readline(reader *bufio.Reader) (string, error) {
 	var buffer string

@@ -28,13 +28,18 @@ type Session struct {
 	playsWatcher     chan bool
 	currentRange     headers.Range
 	resumePoint      float64
-	MediaStreamer
+	streams          []MediaStreamer
+}
+
+type MediaProvider interface {
+	init(mediaID string)
+	get(mediaId string) string
 }
 
 type MediaStreamer interface {
-	initialize(mediaID string)
 	play(timeRange headers.Range)
 	pause(timeRange headers.Range)
+	InitServers(highestPort int) int
 	getCommandChannel() chan headers.Range
 }
 
@@ -59,7 +64,7 @@ func (session Session) PlayPause(pause bool, timeRange headers.Range) {
 			}
 			// send the pause command to the streamer
 			session.plays = nil
-			session.getCommandChannel() <- pause
+			session.streams[0].getCommandChannel() <- pause
 		// queue play commands and notify other waiting go routines
 		case play := <-session.queuePlayRequest:
 			session.plays = append(session.plays, play)
@@ -96,6 +101,6 @@ func (session Session) queueFrame() {
 			continue
 		}
 
-		session.play(*r)
+		session.streams[0].play(*r)
 	}
 }

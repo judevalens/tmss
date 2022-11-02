@@ -3,12 +3,15 @@ package rtsp
 import (
 	"context"
 	"encoding/base64"
+	"fmt"
 	"github.com/gorilla/mux"
 	"github.com/pion/sdp"
 	"golang.org/x/exp/rand"
 	"io"
 	"log"
 	"net/http"
+	"sync"
+	"tmss/media"
 	"tmss/rtsp/headers"
 )
 
@@ -17,17 +20,28 @@ const (
 	rtspSessionKey = "rtsp_session"
 )
 
-func DefaultTransport() headers.Transport {
+type Handler struct {
+	sessions            map[string]Session
+	highestPort         int
+	portAssignmentMutex *sync.Mutex
+	MediaRepo           media.Repo
+}
+
+func (handler Handler) defaultTransport(sessionId string) headers.Transport {
+	session := handler.sessions[sessionId]
+	handler.portAssignmentMutex.Lock()
+	//	handler.highestPort = session.InitServers(handler.highestPort)
+	_ = session
+	handler.portAssignmentMutex.Unlock()
 	return headers.Transport{}
 }
 
-type Handler struct {
-	sessions map[string]Session
-}
-
 func (handler Handler) SetUpHandler(resWriter http.ResponseWriter, request *http.Request) {
+	fmt.Printf("new set up request: %v\n", request.Method)
 	sessionBuf := make([]byte, SessionLen)
 	mediaId := mux.Vars(request)["id"]
+
+	fmt.Printf("media id: %v\n", mediaId)
 
 	if len(mediaId) == 0 {
 		//TODO handle missing media
@@ -48,8 +62,9 @@ func (handler Handler) SetUpHandler(resWriter http.ResponseWriter, request *http
 	handler.sessions[sessionId] = Session{
 		Transport: transports[0],
 	}
-	resWriter.Header().Add(TransportHeader, DefaultTransport().Serialize())
+	resWriter.Header().Add(TransportHeader, request.Header.Get(TransportHeader)+";server_port=9002-9003;ssrc=1234ABCD")
 	resWriter.Header().Add(CSeqHeader, request.Header.Get(CSeqHeader))
+	resWriter.Header().Add(SessionHeader, SessionHeader)
 
 	_, err := resWriter.Write([]byte("body"))
 	if err != nil {
@@ -79,15 +94,25 @@ func (handler Handler) AnnounceHandler(resWriter http.ResponseWriter, request *h
 
 	//TODO implement later
 }
+func (handler Handler) OptionsHandler(resWriter http.ResponseWriter, request *http.Request) {
+	fmt.Printf("new option request: %v\n", request.Method)
+	resWriter.Header()
+	resWriter.Header().Add(PublicHeader, fmt.Sprintf("%s, %s, %s, %s, %s", DESCRIBE, SETUP, TEARDOWN, PLAY, PAUSE))
+	resWriter.Header().Add("CSeq", request.Header.Get(CSeqHeader))
+	resWriter.WriteHeader(http.StatusOK)
+	_, err := resWriter.Write([]byte{})
+	if err != nil {
+		log.Fatal(err)
+		return
+	}
 
+}
 func (handler Handler) DescribeHandler(resWriter http.ResponseWriter, request *http.Request) {
 	//TODO get video desc
+	mediaId := mux.Vars(request)["id"]
+	handler.MediaRepo.GetSDPSession(mediaId)
 	sessionDescription := &sdp.SessionDescription{}
 	descriptionRaw := sessionDescription.Marshal()
-
-	resWriter.Header().Add(CSeqHeader, request.Header.Get(CSeqHeader))
-	//resWriter.Header().Add(ContentLengthHeader,request.Header.Get(CSeqHeader))
-	resWriter.Header().Add(SessionHeader, request.Header.Get(SessionHeader))
 
 	_, err := resWriter.Write([]byte(descriptionRaw))
 	if err != nil {
@@ -95,7 +120,6 @@ func (handler Handler) DescribeHandler(resWriter http.ResponseWriter, request *h
 		return
 	}
 }
-
 func (handler Handler) PlayHandler(resWriter http.ResponseWriter, request *http.Request) {
 	var rangeHeader *headers.Range
 	session := request.Context().Value("rtsp_session").(Session)
@@ -121,7 +145,7 @@ func (handler Handler) PlayHandler(resWriter http.ResponseWriter, request *http.
 // is not present and the req is not a SETUP request
 func (handler Handler) setSession(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		if request.Proto != SETUP {
+		if request.Method != SETUP && request.Method != OPTIONS && request.Method != DESCRIBE {
 			sessionID := request.Header.Get(SessionHeader)
 			if sessionID == "" {
 				writer.WriteHeader(http.StatusUnauthorized)
@@ -131,6 +155,8 @@ func (handler Handler) setSession(next http.Handler) http.Handler {
 			session := handler.sessions[sessionID]
 			request.WithContext(context.WithValue(request.Context(), rtspSessionKey, session))
 		}
+		println("next")
+		println(next)
 		next.ServeHTTP(writer, request)
 	})
 }
