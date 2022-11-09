@@ -35,4 +35,4 @@ void buffer(struct MediaBuffer *buffer, int percent);
 int bufferUP(struct MediaBuffer *buffer);
 void *circularBuffGet(struct FrameBuffer *buffer);
 void circularBufferAdd(struct FrameBuffer *buffer, void *packet);
-void demux_file(AVFormatContext *mediaContext);
+void demux_file(AVFormatContext *mediaContext, char *OutUrl);

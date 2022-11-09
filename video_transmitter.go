@@ -7,6 +7,8 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"os"
+	"path"
 	"tmss/rtp"
 )
 
@@ -23,8 +25,14 @@ type VideoTransmitter struct {
 
 func initVideoTransmitter() *VideoTransmitter {
 	videoTransmitter := &VideoTransmitter{}
-	videoTransmitter.mediaBuffer = C.init_media_buffer(C.CString("file:/mnt/c/Users/judev/Downloads/big buck bunny.mp4"))
-	C.bufferUP(videoTransmitter.mediaBuffer)
+	filepath := "/home/jude/Desktop/amnis server/big_buck_bunny.mp4"
+	homeDir, _ := os.UserHomeDir()
+
+	outputDir := path.Join(homeDir, "Desktop/amnis server")
+
+	mediaAvFormatCtx := C.open_media(C.CString(filepath))
+	C.demux_file(mediaAvFormatCtx, C.CString(outputDir))
+	//C.bufferUP(videoTransmitter.mediaBuffer, outputDir)
 	return videoTransmitter
 }
 

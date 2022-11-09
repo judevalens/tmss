@@ -14,11 +14,7 @@
 AVFormatContext* openMedia();
 
 int main() {
-    printf("Hello, World!\n");
-    printf("%s\n", avcodec_get_class()->class_name);
-    AVFormatContext *video_ctx = openMedia();
-    demux_file(video_ctx);
-    avformat_close_input(&video_ctx);
+
     return 0;
 }
 

@@ -9,6 +9,7 @@
 #define MAX_URL_LEN     250
 #define FILE_URL_SCHEME "file:"
 #define DEFAULT_DIR "/home/jude/Desktop/amnis server/"
+
 char *getFileName(char *name);
 
 AVFormatContext *open_media(char *mediaPath) {
@@ -163,27 +164,30 @@ void circularBufferAdd(struct FrameBuffer *buffer, void *packet) {
     buffer->count++;
 }
 
-void demux_file(AVFormatContext *mediaContext) {
-    char *defaultContainerFormat = "mp4";
-    char *audiUrl = "";
-    char *videoURL = "";
+/**
+ * splits a video file into singular streams
+ * @parameter mediaContext
+ */
+void demux_file(AVFormatContext *mediaContext, char *OutUrl) {
+    char *defaultVideoContainer = "mp4";
+    char *defaultAudioContainer = "mp4";
     int res = 0;
     AVFormatContext *audioOutCtx = NULL;
     AVFormatContext *videoOutCtx = NULL;
     AVFormatContext **mediaMap = malloc(sizeof(AVFormatContext *) * 2);
     const char *mediaBaseName = av_basename(mediaContext->url);
-    char *fileName = getFileName((char*)mediaBaseName);
-    printf("input url: %s\n",mediaContext->url);
+    char *fileName = getFileName((char *) mediaBaseName);
+    printf("input url: %s\n", mediaContext->url);
 
     char *audioOutName = malloc(MAX_URL_LEN);
     char *videoOutName = malloc(MAX_URL_LEN);
-    char *audioOutUrl  = malloc(MAX_URL_LEN);
-    char *videoOutUrl  = malloc(MAX_URL_LEN);
+    char *audioOutUrl = malloc(MAX_URL_LEN);
+    char *videoOutUrl = malloc(MAX_URL_LEN);
 
-    sprintf(audioOutName, "%s%s.%s", fileName, AUDIO_SUFFIX, defaultContainerFormat);
-    sprintf(videoOutName, "%s%s.%s", fileName, VIDEO_SUFFIX, defaultContainerFormat);
-    sprintf(audioOutUrl, "%s%s%s", FILE_URL_SCHEME,DEFAULT_DIR,audioOutName);
-    sprintf(videoOutUrl, "%s%s%s", FILE_URL_SCHEME,DEFAULT_DIR,videoOutName);
+    sprintf(audioOutName, "%s%s.%s", fileName, AUDIO_SUFFIX, defaultAudioContainer);
+    sprintf(videoOutName, "%s%s.%s", fileName, VIDEO_SUFFIX, defaultVideoContainer);
+    sprintf(audioOutUrl, "%s%s/%s", FILE_URL_SCHEME, OutUrl, audioOutName);
+    sprintf(videoOutUrl, "%s%s/%s", FILE_URL_SCHEME, OutUrl, videoOutName);
     free(fileName);
     for (int i = 0; i < mediaContext->nb_streams; i++) {
         if (audioOutCtx != NULL && videoOutCtx != NULL) {
@@ -213,33 +217,42 @@ void demux_file(AVFormatContext *mediaContext) {
     AVPacket *packet = av_packet_alloc();
     printf("video url: %s\n", videoOutCtx->url);
     printf("audio url: %s\n", audioOutCtx->url);
-    res = avio_open(&audioOutCtx->pb,audioOutCtx->url,AVIO_FLAG_WRITE) ;
-     if ( res < 0){
-          printf("failed to open audio AVIO context\n err: %s\n", av_err2str(res));
-          return;
-      }
-    res = avio_open(&videoOutCtx->pb,videoOutCtx->url,AVIO_FLAG_WRITE);
-    if ( res < 0){
+    res = avio_open(&audioOutCtx->pb, audioOutCtx->url, AVIO_FLAG_WRITE);
+    if (res < 0) {
+        printf("failed to open audio AVIO context\n err: %s\n", av_err2str(res));
+        return;
+    }
+    res = avio_open(&videoOutCtx->pb, videoOutCtx->url, AVIO_FLAG_WRITE);
+    if (res < 0) {
         printf("failed to open video AVIO context\n err: %s", av_err2str(res));
         return;
     }
-     avformat_write_header(videoOutCtx,NULL);
-     avformat_write_header(audioOutCtx,NULL);
-     int i = 0;
-    while(av_read_frame(mediaContext,packet) >= 0){
-        printf("%d: writing frame: stream# %d\n", i++,packet->stream_index);
+    res = avformat_write_header(videoOutCtx, NULL);
+
+    if (res < 0) {
+        perror(av_err2str(res));
+        return;
+    }
+
+    res = avformat_write_header(audioOutCtx, NULL);
+
+    if (res < 0) {
+        perror(av_err2str(res));
+        return;
+    }
+    int i = 0;
+    while (av_read_frame(mediaContext, packet) >= 0) {
+        printf("%d: writing frame: stream# %d\n", i++, packet->stream_index);
 
         AVStream *srcStream = mediaContext->streams[packet->stream_index];
         int streamIndex = packet->stream_index;
         packet->stream_index = 0;
-        av_packet_rescale_ts(packet,srcStream->time_base,
+        av_packet_rescale_ts(packet, srcStream->time_base,
                              mediaMap[streamIndex]->streams[0]->time_base);
         av_interleaved_write_frame(mediaMap[streamIndex], packet);
     }
-
     av_write_trailer(audioOutCtx);
     av_write_trailer(videoOutCtx);
-
 }
 
 char *getFileName(char *name) {

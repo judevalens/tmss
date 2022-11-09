@@ -24,7 +24,7 @@ type Handler struct {
 	sessions            map[string]Session
 	highestPort         int
 	portAssignmentMutex *sync.Mutex
-	MediaRepo           media.Repo
+	MediaRepo           media.RepoI
 }
 
 func (handler Handler) defaultTransport(sessionId string) headers.Transport {
