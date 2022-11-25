@@ -2,7 +2,7 @@
 // Created by Jude Paulemon on 4/29/2022.
 //
 #include "video_reader.h"
-
+#include "rtp.h"
 #define FRAME_BUFFER_SIZE  5
 #define AUDIO_SUFFIX  "_AUDIO"
 #define VIDEO_SUFFIX  "_VIDEO"
@@ -15,14 +15,15 @@ char *getFileName(char *name);
 AVFormatContext *open_media(char *mediaPath) {
     AVFormatContext *mediaContext = avformat_alloc_context();
     printf("open media: %s,\n", av_err2str(avformat_open_input(&mediaContext, mediaPath, NULL, NULL)));
-    printf("file name:: %s, extension %s, n stream: %d\n", mediaContext->url, mediaContext->iformat->name,
-           mediaContext->nb_streams);
+    printf("file name:: %s, extension %s, n stream: %d, long name: %s\n", mediaContext->url, mediaContext->iformat->name,
+           mediaContext->nb_streams,mediaContext->iformat->long_name);
     for (int i = 0; i < mediaContext->nb_streams; i++) {
         AVStream *current_stream = mediaContext->streams[i];
         /*const AVCodecDescriptor *code_desc = avcodec_descriptor_get(current_stream->codecpar->codec_id);
         printf("# %d, codec type %s, media_type %s \n",current_stream->id,code_desc->name,av_get_media_type_string(code_desc->type));*/
         av_dump_format(mediaContext, i, mediaContext->url, 0);
     }
+
 
     // avformat_close_input(&mediaContext);
     return mediaContext;

@@ -9,6 +9,7 @@
 #include "libavformat/avio.h"
 #include "libavutil/avstring.h"
 #include "libavcodec/avcodec.h"
+#include "rtp.h"
 #endif //MMS_VIDEO_READER_H
 
  struct MediaBuffer{

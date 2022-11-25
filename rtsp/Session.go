@@ -2,8 +2,8 @@ package rtsp
 
 import (
 	"errors"
-	"net"
 	"strings"
+	"tmss/media"
 	"tmss/rtsp/headers"
 )
 
@@ -41,9 +41,10 @@ type MediaStreamer interface {
 	pause(timeRange headers.Range)
 	InitServers(highestPort int) int
 	getCommandChannel() chan headers.Range
+	getPort() int
 }
 
-func OpenNewSession(mediaId string, addr net.Addr) Session {
+func OpenNewSession(mediaId string, m media.Media) Session {
 	return Session{}
 }
 
@@ -82,6 +83,7 @@ func (session Session) PlayPause(pause bool, timeRange headers.Range) {
 }
 
 func (session Session) Play(streamRange *headers.Range) {
+	return
 	if streamRange == nil {
 		streamRange = &headers.Range{
 			StartTime: session.resumePoint,

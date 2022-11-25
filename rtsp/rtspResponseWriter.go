@@ -8,6 +8,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"strconv"
 	"time"
 )
 
@@ -41,6 +42,10 @@ func (r ResponseWriter) Write(data []byte) (int, error) {
 	//r.Response.Header.Set(ContentLengthHeader, strconv.Itoa(len(data)))
 	r.ContentLength = int64(len(data))
 	r.Response.Body = io.NopCloser(bytes.NewReader(data))
+	if r.ContentLength > 0 {
+		r.Header().Add(ContentLengthHeader, strconv.Itoa(int(r.ContentLength)))
+
+	}
 	rawResponse, err := serializeResponse(*r.Response)
 	if err != nil {
 		log.Fatal(err)

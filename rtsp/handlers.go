@@ -64,9 +64,9 @@ func (handler Handler) SetUpHandler(resWriter http.ResponseWriter, request *http
 	}
 	resWriter.Header().Add(TransportHeader, request.Header.Get(TransportHeader)+";server_port=9002-9003;ssrc=1234ABCD")
 	resWriter.Header().Add(CSeqHeader, request.Header.Get(CSeqHeader))
-	resWriter.Header().Add(SessionHeader, SessionHeader)
+	resWriter.Header().Add(SessionHeader, sessionId)
 
-	_, err := resWriter.Write([]byte("body"))
+	_, err := resWriter.Write([]byte{})
 	if err != nil {
 		log.Fatal("Failed to send res to client")
 		return
@@ -110,10 +110,9 @@ func (handler Handler) OptionsHandler(resWriter http.ResponseWriter, request *ht
 func (handler Handler) DescribeHandler(resWriter http.ResponseWriter, request *http.Request) {
 	//TODO get video desc
 	mediaId := mux.Vars(request)["id"]
-	handler.MediaRepo.GetSDPSession(mediaId)
-	sessionDescription := &sdp.SessionDescription{}
+	sessionDescription := handler.MediaRepo.GetSDPSession(mediaId)
 	descriptionRaw := sessionDescription.Marshal()
-
+	resWriter.Header().Add(CSeqHeader, request.Header.Get(CSeqHeader))
 	_, err := resWriter.Write([]byte(descriptionRaw))
 	if err != nil {
 		log.Fatalf("cannot send res,%v\n", err)
@@ -121,16 +120,8 @@ func (handler Handler) DescribeHandler(resWriter http.ResponseWriter, request *h
 	}
 }
 func (handler Handler) PlayHandler(resWriter http.ResponseWriter, request *http.Request) {
-	var rangeHeader *headers.Range
-	session := request.Context().Value("rtsp_session").(Session)
-
-	if rangerHeaderString := request.Header.Get(RangeHeader); rangerHeaderString != "" {
-		header, err := headers.ParseRange(rangerHeaderString)
-		if err == nil {
-			rangeHeader = &header
-		}
-	}
-	session.Play(rangeHeader)
+	resWriter.Header().Add(CSeqHeader, request.Header.Get(CSeqHeader))
+	resWriter.Header().Add("Range", "npt=0.000-")
 
 	// we should check if the session is still active
 	_, err := resWriter.Write([]byte{})

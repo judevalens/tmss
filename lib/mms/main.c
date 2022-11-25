@@ -14,6 +14,7 @@
 AVFormatContext* openMedia();
 
 int main() {
+    printf("codec name: %s\n", avcodec_get_name( AV_CODEC_ID_AAC_LATM));
 
     return 0;
 }
@@ -32,7 +33,6 @@ AVFormatContext* openMedia() {
         /*const AVCodecDescriptor *code_desc = avcodec_descriptor_get(current_stream->codecpar->codec_id);
         printf("# %d, codec type %s, media_type %s \n",current_stream->id,code_desc->name,av_get_media_type_string(code_desc->type));*/
         av_dump_format(mediaContext, i, mediaContext->url, 0);
-
     }
     return mediaContext;
 }
