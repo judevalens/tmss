@@ -11,6 +11,7 @@ import (
 	"log"
 	"net/http"
 	"sync"
+	"time"
 	"tmss/media"
 	"tmss/rtsp/headers"
 )
@@ -40,23 +41,32 @@ func (handler Handler) SetUpHandler(resWriter http.ResponseWriter, request *http
 	fmt.Printf("new set up request: %v\n", request.Method)
 	sessionBuf := make([]byte, SessionLen)
 	mediaId := mux.Vars(request)["id"]
+	var sessionId string
+	var session Session
+	r := rand.New(rand.NewSource(uint64(time.Now().Nanosecond())))
+	if request.Context().Value(rtspSessionKey) == nil {
+		if sessionId == "" {
+			_, err := r.Read(sessionBuf)
+			if err != nil {
+				return
+			}
+			sessionId = base64.URLEncoding.EncodeToString(sessionBuf)
+		}
+		mediaInfo := handler.MediaRepo.GetMedia(mediaId)
+		session = OpenNewSession(mediaId, mediaInfo)
+	} else {
+		sessionId = request.Context().Value(rtspSessionKey).(string)
+		session = handler.sessions[sessionId]
+	}
+	_ = session
 
-	fmt.Printf("media id: %v\n", mediaId)
-
-	if len(mediaId) == 0 {
-		//TODO handle missing media
+	rtpConn, rtcpConn, err := GetConn()
+	if err != nil {
+		log.Fatal(err)
 		return
 	}
-
-	sessionId := request.Header.Get(SessionHeader)
-	if sessionId == "" {
-		_, err := rand.Read(sessionBuf)
-		if err != nil {
-			return
-		}
-		sessionId = base64.URLEncoding.EncodeToString(sessionBuf)
-	}
-	_ = sessionId
+	streamer := MediaStreamer()
+	session.streams = append(session.streams, Ini)
 
 	transports := headers.ParseTransport(request.Header.Get(TransportHeader))
 	handler.sessions[sessionId] = Session{

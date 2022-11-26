@@ -2,13 +2,19 @@ package rtsp
 
 import (
 	"errors"
+	"fmt"
+	"golang.org/x/exp/rand"
+	"net"
 	"strings"
+	"time"
 	"tmss/media"
 	"tmss/rtsp/headers"
 )
 
 const (
 	RTPProfile = "RTP/AVP"
+	minPort    = 1024
+	maxPort    = 65535
 )
 
 type PlayPauseRequest struct {
@@ -39,7 +45,7 @@ type MediaProvider interface {
 type MediaStreamer interface {
 	play(timeRange headers.Range)
 	pause(timeRange headers.Range)
-	InitServers(highestPort int) int
+	Init(mediaId string, conn net.PacketConn) int
 	getCommandChannel() chan headers.Range
 	getPort() int
 }
@@ -105,4 +111,38 @@ func (session Session) queueFrame() {
 
 		session.streams[0].play(*r)
 	}
+}
+
+type ConnAlloc struct {
+	conn net.PacketConn
+	port int
+}
+
+func GetConn() (ConnAlloc, ConnAlloc, error) {
+	startTime := time.Now()
+	for time.Now().Sub(startTime) <= time.Second*30 {
+		i := rand.Intn(maxPort+minPort) + minPort
+		if i%2 != 0 {
+			continue
+		}
+		rtpConn, err := net.ListenPacket("udp", fmt.Sprintf(":%d", i))
+		if err != nil {
+			continue
+		}
+		i++
+		rtcpConn, err := net.ListenPacket("udp", fmt.Sprintf(":%d", i))
+		if err != nil {
+			continue
+		}
+
+		return ConnAlloc{
+				conn: rtpConn,
+				port: i - 1,
+			},
+			ConnAlloc{
+				conn: rtcpConn,
+				port: i,
+			}, nil
+	}
+	return ConnAlloc{}, ConnAlloc{}, errors.New("failed to open connections")
 }

@@ -29,6 +29,7 @@ type Context C.struct_AVFormatContext
 
 type RepoI interface {
 	GetSDPSession(mediaId string) *sdp.SessionDescription
+	GetMedia(mediaId string) Media
 }
 
 type JsonRepo struct {
@@ -117,7 +118,9 @@ func (repo JsonRepo) GetSDPSession(mediaId string) *sdp.SessionDescription {
 	}
 	return session
 }
-
+func (repo JsonRepo) GetMedia(mediaId string) Media {
+	return repo.Media[mediaId]
+}
 func (repo JsonRepo) AddMedia(rawMedia []byte, name string) {
 	hash := sha1.New()
 	hash.Write(rawMedia)
