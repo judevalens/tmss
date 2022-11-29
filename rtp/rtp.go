@@ -14,12 +14,12 @@ const (
 	AccPayloadType  = iota
 )
 
-type RtpPacket struct {
-	Header  RtpHeader
+type Packet struct {
+	Header  Header
 	payload RtpPayload
 }
 
-type RtpHeader struct {
+type Header struct {
 	Version        byte
 	Padding        byte
 	Extension      byte
@@ -35,11 +35,11 @@ type RtpHeader struct {
 type RtpPayload interface {
 }
 
-func parseRtpHeader(data []byte) RtpHeader {
+func parseRtpHeader(data []byte) Header {
 
 	println()
 	fmt.Printf("dec = %v, binary str =  %v\n", data[0], strconv.FormatInt(int64(data[0]), 2))
-	header := RtpHeader{
+	header := Header{
 		Version:        (data[0] << 6) >> 6,
 		Padding:        (data[0] << 5) >> 7,
 		Extension:      (data[0] << 4) >> 7,
@@ -60,7 +60,7 @@ func parseRtpHeader(data []byte) RtpHeader {
 	return header
 }
 
-func serializeRtpHeader(header RtpHeader) []byte {
+func serializeRtpHeader(header Header) []byte {
 
 	rawHeader := make([]byte, RtpHeaderSize+(4*(int)(header.CsrcCount)))
 	rawHeader[0] = rawHeader[0] | (header.Padding << 2)
@@ -80,14 +80,13 @@ func serializeRtpHeader(header RtpHeader) []byte {
 }
 
 func SerializeRTPPacket(header []byte, payload []byte) []byte {
-
 	rawPacket := make([]byte, len(header)+len(payload))
 	copy(rawPacket, header)
 	copy(rawPacket[len(header):], payload)
 	return rawPacket
 }
 
-func ParseRtpPacket(packet []byte, packetSize int) RtpPacket {
+func ParseRtpPacket(packet []byte, packetSize int) Packet {
 	rtpHeader := parseRtpHeader(packet)
 	var rtpPayload RtpPayload
 	switch rtpHeader.PayloadType {
@@ -96,7 +95,7 @@ func ParseRtpPacket(packet []byte, packetSize int) RtpPacket {
 	case AccPayloadType:
 		rtpPayload = parseAccPayload()
 	}
-	return RtpPacket{
+	return Packet{
 		Header:  rtpHeader,
 		payload: rtpPayload,
 	}

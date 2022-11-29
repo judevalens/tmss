@@ -1,11 +1,20 @@
 package rtp
 
-import "net"
+import (
+	"net"
+	"tmss/rtsp/headers"
+)
 
 const MTU = 65000
 
 type MediaControl struct {
 	teardown bool
+}
+
+type MediaStreamer interface {
+	Play(timeRange headers.Range)
+	Pause(timeRange headers.Range)
+	Init(mediaId string, rtpConn net.PacketConn, rtcpConn net.PacketConn)
 }
 
 type Session struct {
@@ -15,7 +24,19 @@ type Session struct {
 	mediaControl chan MediaControl
 }
 
-func (session Session) init() {
+func (session Session) Play(timeRange headers.Range) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (session Session) Pause(timeRange headers.Range) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (session Session) Init(mediaId string, rtpConn net.PacketConn, rtcpConn net.PacketConn) {
+	//TODO implement me
+	panic("implement me")
 }
 
 func (session Session) startAudioTransmitter() {

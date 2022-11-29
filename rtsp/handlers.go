@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 	"tmss/media"
+	"tmss/rtp"
 	"tmss/rtsp/headers"
 )
 
@@ -41,6 +42,7 @@ func (handler Handler) SetUpHandler(resWriter http.ResponseWriter, request *http
 	fmt.Printf("new set up request: %v\n", request.Method)
 	sessionBuf := make([]byte, SessionLen)
 	mediaId := mux.Vars(request)["id"]
+	streamId := mux.Vars(request)["streamId"]
 	var sessionId string
 	var session Session
 	r := rand.New(rand.NewSource(uint64(time.Now().Nanosecond())))
@@ -65,18 +67,20 @@ func (handler Handler) SetUpHandler(resWriter http.ResponseWriter, request *http
 		log.Fatal(err)
 		return
 	}
-	streamer := MediaStreamer()
-	session.streams = append(session.streams, Ini)
+	streamer := rtp.Session{}
+	streamer.Init(mediaId, rtpConn.conn, rtcpConn.conn)
+	session.streams[streamId] = streamer
 
 	transports := headers.ParseTransport(request.Header.Get(TransportHeader))
 	handler.sessions[sessionId] = Session{
 		Transport: transports[0],
 	}
+	//
 	resWriter.Header().Add(TransportHeader, request.Header.Get(TransportHeader)+";server_port=9002-9003;ssrc=1234ABCD")
 	resWriter.Header().Add(CSeqHeader, request.Header.Get(CSeqHeader))
 	resWriter.Header().Add(SessionHeader, sessionId)
 
-	_, err := resWriter.Write([]byte{})
+	_, err = resWriter.Write([]byte{})
 	if err != nil {
 		log.Fatal("Failed to send res to client")
 		return

@@ -46,7 +46,7 @@ func startRtpServer(ctx context.Context, addr2 string) {
 	}
 	fmt.Printf("waiting for packets on %v\n", listener.LocalAddr())
 	i := 0
-	rtpPacketChannel := make(chan rtp.RtpPacket, 10)
+	rtpPacketChannel := make(chan rtp.Packet, 10)
 	startPacketHandler(ctx, rtpPacketChannel, 10)
 	for {
 		packetSize, _, err := listener.ReadFrom(buffer)
@@ -98,13 +98,13 @@ type h264Frame struct {
 	pts  int64
 }
 
-func startPacketHandler(ctx context.Context, rtpPacketChannel chan rtp.RtpPacket, poolSize int) {
+func startPacketHandler(ctx context.Context, rtpPacketChannel chan rtp.Packet, poolSize int) {
 	i := 0
 	for i < poolSize {
 		i++
 		childCtx, _ := context.WithCancel(ctx)
 
-		go func(ctx context.Context, rtpChannel2 chan rtp.RtpPacket, workerN int) {
+		go func(ctx context.Context, rtpChannel2 chan rtp.Packet, workerN int) {
 			for {
 				select {
 				case <-childCtx.Done():

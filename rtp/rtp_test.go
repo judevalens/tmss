@@ -11,18 +11,18 @@ func Test_parseRtpHeader(t *testing.T) {
 	tests := []struct {
 		name   string
 		args   args
-		want   RtpHeader
-		assert func(args2 args, got RtpHeader, want RtpHeader)
+		want   Header
+		assert func(args2 args, got Header, want Header)
 	}{
 		{
 			name: "Should parse the correct Version field",
 			args: args{
 				[]byte{3},
 			},
-			want: RtpHeader{
+			want: Header{
 				Version: 9,
 			},
-			assert: func(args2 args, got RtpHeader, want RtpHeader) {
+			assert: func(args2 args, got Header, want Header) {
 				if got.Version != want.Version {
 					t.Errorf("got %v, want %v", got.Version, want.Version)
 				}
