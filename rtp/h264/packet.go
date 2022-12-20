@@ -1,9 +1,10 @@
-package rtp
+package h264
 
 import (
 	"fmt"
 	"math"
 	"strconv"
+	"tmss/rtp"
 )
 
 const (
@@ -62,14 +63,14 @@ type StapBunit struct {
 }
 
 type Mtap16Unit struct {
-	Header   NAlHeader
-	DOND     int8
+	Header NAlHeader
+	DOND   int8
 	TsOffset int16
 	Payload  []byte
 }
 type Mtap24Unit struct {
-	Header   NAlHeader
-	DOND     int8
+	Header NAlHeader
+	DOND   int8
 	TsOffset int32
 	Payload  []byte
 }
@@ -177,7 +178,7 @@ func (packet FUa) serialize(header []byte, data []byte, maxPacketSize int) [][]b
 		payloadFragment[0] = fuIndicator
 		payloadFragment[1] = fuHeader
 		copy(payloadFragment[2:], data[startIndex:endIndex])
-		rawPackets[i] = SerializeRTPPacket(header, payloadFragment)
+		rawPackets[i] = rtp.SerializeRTPPacket(header, payloadFragment)
 		startIndex += maxPacketSize
 	}
 	return rawPackets

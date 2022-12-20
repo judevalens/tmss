@@ -16,28 +16,30 @@ const (
 
 type Packet struct {
 	Header  Header
-	payload RtpPayload
+	Payload []byte
 }
 
 type Header struct {
-	Version        byte
-	Padding        byte
-	Extension      byte
-	CsrcCount      byte
-	Marker         byte
-	PayloadType    byte
-	SequenceNumber uint16
-	Timestamp      uint32
-	SSRC           uint32
-	CSRC           []uint32
+	Version             byte
+	Padding             byte
+	Extension           byte
+	CsrcCount           byte
+	Marker              byte
+	PayloadType         byte
+	SequenceNumber      uint16
+	Timestamp           uint32
+	SSRC                uint32
+	CSRC                []uint32
+	ExtensionHeaderId   uint16
+	ExtensionHeaderSize uint16
+	ExtensionHeader     []uint32
+	Size                int
 }
 
 type RtpPayload interface {
 }
 
 func parseRtpHeader(data []byte) Header {
-
-	println()
 	fmt.Printf("dec = %v, binary str =  %v\n", data[0], strconv.FormatInt(int64(data[0]), 2))
 	header := Header{
 		Version:        (data[0] << 6) >> 6,
@@ -50,13 +52,22 @@ func parseRtpHeader(data []byte) Header {
 		Timestamp:      binary.BigEndian.Uint32(data[4:8]),
 		SSRC:           binary.BigEndian.Uint32(data[8:12]),
 	}
-	/**for i := 0; i < (int)(headers.CsrcCount); i++ {
-			s := 12 + (4 * i)
-			headers.CSRC = append(headers.CSRC, binary.BigEndian.Uint32(data[s:s+4]))
+	i := 12
+	for ; i < (int)(header.CsrcCount); i += 4 {
+		header.CSRC = append(header.CSRC, binary.BigEndian.Uint32(data[i:i+4]))
+	}
+	if header.Extension == 1 {
+		i = int(12 + 4*uint(header.CsrcCount))
+		j := i + 2
+		header.ExtensionHeaderId = binary.BigEndian.Uint16(data[i:j])
+		i = j + 2
+		j = i + 2
+		header.ExtensionHeaderSize = binary.BigEndian.Uint16(data[i:j])
+		for i = j; i < i+int(header.ExtensionHeaderSize); i += 4 {
+			header.ExtensionHeader = append(header.ExtensionHeader, binary.BigEndian.Uint32(data[i:i+4]))
 		}
-
-		fmt.Printf("%v", data[:16])
-	**/
+	}
+	header.Size = i // will use the header size to determine the payload size
 	return header
 }
 
@@ -88,27 +99,11 @@ func SerializeRTPPacket(header []byte, payload []byte) []byte {
 
 func ParseRtpPacket(packet []byte, packetSize int) Packet {
 	rtpHeader := parseRtpHeader(packet)
-	var rtpPayload RtpPayload
-	switch rtpHeader.PayloadType {
-	case H264PayloadType:
-		rtpPayload = parseH264Payload()
-	case AccPayloadType:
-		rtpPayload = parseAccPayload()
-	}
 	return Packet{
 		Header:  rtpHeader,
-		payload: rtpPayload,
+		Payload: packet[rtpHeader.Size:packetSize],
 	}
 }
 func getRtpSequence() int16 {
 	return 1
-}
-
-func parseH264Payload() RtpPayload {
-	//TODO	log.Fatal("Need to be implemented")
-	return SingleNalPacket{}
-}
-func parseAccPayload() RtpPayload {
-	//TODO wlog.Fatal("Need to be implemented")
-	return SingleNalPacket{}
 }

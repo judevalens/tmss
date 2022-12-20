@@ -1,7 +1,7 @@
 package main
 
 // #cgo LDFLAGS: -L${SRCDIR}/lib/mms/build -lmms_media
-// #include "lib/mms/video_reader.h"
+// #include "/usr/local/usr/include/video_reader.h"
 import "C"
 import (
 	"context"
@@ -10,6 +10,7 @@ import (
 	"os"
 	"path"
 	"tmss/rtp"
+	"tmss/rtp/h264"
 )
 
 const receiverAdd = ""
@@ -20,7 +21,7 @@ const MaxFrameBufferSize = 10
 
 type VideoTransmitter struct {
 	mediaBuffer *C.struct_MediaBuffer
-	packetChan  chan chan rtp.NalUnit
+	packetChan  chan chan h264.NalUnit
 }
 
 func initVideoTransmitter() *VideoTransmitter {
@@ -64,11 +65,6 @@ func startRtpServer(ctx context.Context, addr2 string) {
 
 }
 
-func test() {
-	var mediaBuffer *C.struct_MediaBuffer
-	mediaBuffer = C.init_media_buffer(C.CString("file:/mnt/c/Users/judev/Downloads/big buck bunny.mp4"))
-	C.bufferUP(mediaBuffer)
-}
 
 type h264FrameBuffer struct {
 	videoFrameQueue [MaxFrameBufferSize]h264Frame
@@ -160,8 +156,8 @@ func (t VideoTransmitter) bufferUP() {
 	}
 }
 
-func (t VideoTransmitter) buildHdrHeader() rtp.NAlHeader {
-	return rtp.NAlHeader{}
+func (t VideoTransmitter) buildHdrHeader() h264.NAlHeader {
+	return h264.NAlHeader{}
 }
 
 func FillBuffer() {

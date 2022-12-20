@@ -15,7 +15,6 @@ AVFormatContext* openMedia();
 
 int main() {
     printf("codec name: %s\n", avcodec_get_name( AV_CODEC_ID_AAC_LATM));
-
     return 0;
 }
 

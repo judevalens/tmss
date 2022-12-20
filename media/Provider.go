@@ -18,7 +18,7 @@ import (
 )
 
 // #cgo LDFLAGS: -L${SRCDIR}/lib/mms/build -lmms_media -lavcodec -lavutil
-// #include "../lib/mms/video_reader.h"
+// #include "/usr/local/usr/include/video_reader.h"
 import "C"
 
 const Transport = "RTP/AVP"
@@ -53,6 +53,7 @@ type Stream struct {
 	TimeBaseNum int
 	TimeBaseDen int
 	PayloadType int
+	BitRate     int
 }
 
 func NewJsonRepo() *JsonRepo {

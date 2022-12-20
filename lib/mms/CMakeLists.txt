@@ -24,4 +24,7 @@ add_library(mms_media SHARED video_reader.c video_reader.h rtp.c rtp.h)
 target_include_directories(mms PUBLIC ${FFMPEG__INCLUDE_LIB})
 target_link_libraries(mms ${LIBAVFORMAT} ${LIBAVUTIL} ${LIBAVCODEC})
 target_link_libraries(mms_media ${LIBAVFORMAT} ${LIBAVUTIL} ${LIBAVCODEC})
-install(TARGETS mms_media DESTINATION  /usr/lib)
+set_target_properties(mms_media PROPERTIES PUBLIC_HEADER "video_reader.h;rtp.h")
+
+install(TARGETS mms_media DESTINATION  /usr/lib
+        PUBLIC_HEADER DESTINATION usr/include)
