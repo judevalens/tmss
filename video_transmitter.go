@@ -7,10 +7,8 @@ import (
 	"context"
 	"fmt"
 	"net"
-	"os"
-	"path"
-	"tmss/rtp"
 	"tmss/rtp/h264"
+	"tmss/rtp/parser"
 )
 
 const receiverAdd = ""
@@ -27,12 +25,12 @@ type VideoTransmitter struct {
 func initVideoTransmitter() *VideoTransmitter {
 	videoTransmitter := &VideoTransmitter{}
 	filepath := "/home/jude/Desktop/amnis server/big_buck_bunny.mp4"
-	homeDir, _ := os.UserHomeDir()
+	//homeDir, _ := os.UserHomeDir()
 
-	outputDir := path.Join(homeDir, "Desktop/amnis server")
+	//outputDir := path.Join(homeDir, "Desktop/amnis server")
 
 	mediaAvFormatCtx := C.open_media(C.CString(filepath))
-	C.demux_file(mediaAvFormatCtx, C.CString(outputDir))
+	C.demux_file(mediaAvFormatCtx)
 	//C.bufferUP(videoTransmitter.mediaBuffer, outputDir)
 	return videoTransmitter
 }
@@ -47,7 +45,7 @@ func startRtpServer(ctx context.Context, addr2 string) {
 	}
 	fmt.Printf("waiting for packets on %v\n", listener.LocalAddr())
 	i := 0
-	rtpPacketChannel := make(chan rtp.Packet, 10)
+	rtpPacketChannel := make(chan parser.Packet, 10)
 	startPacketHandler(ctx, rtpPacketChannel, 10)
 	for {
 		packetSize, _, err := listener.ReadFrom(buffer)
@@ -57,14 +55,13 @@ func startRtpServer(ctx context.Context, addr2 string) {
 		i++
 		fmt.Printf("#%v: new msg, msg len: %v\n", i, packetSize)
 		//	handleRtpSession(context.Background(), buffer, addr)
-		packet := rtp.ParseRtpPacket(buffer, packetSize)
+		packet := parser.ParseRtpPacket(buffer, packetSize)
 
 		rtpPacketChannel <- packet
 	}
 	fmt.Printf("server shut down\n")
 
 }
-
 
 type h264FrameBuffer struct {
 	videoFrameQueue [MaxFrameBufferSize]h264Frame
@@ -94,13 +91,13 @@ type h264Frame struct {
 	pts  int64
 }
 
-func startPacketHandler(ctx context.Context, rtpPacketChannel chan rtp.Packet, poolSize int) {
+func startPacketHandler(ctx context.Context, rtpPacketChannel chan parser.Packet, poolSize int) {
 	i := 0
 	for i < poolSize {
 		i++
 		childCtx, _ := context.WithCancel(ctx)
 
-		go func(ctx context.Context, rtpChannel2 chan rtp.Packet, workerN int) {
+		go func(ctx context.Context, rtpChannel2 chan parser.Packet, workerN int) {
 			for {
 				select {
 				case <-childCtx.Done():

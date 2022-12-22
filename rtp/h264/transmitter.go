@@ -4,15 +4,21 @@ package h264
 // #include "/usr/local/usr/include/video_reader.h"
 import "C"
 import (
+	"errors"
+	"math"
 	"net"
 	"time"
 	"tmss/media"
-	"tmss/rtp"
+	"tmss/rtp/parser"
 	"tmss/rtsp/headers"
 	"unsafe"
 )
 
+const MTU = 65000
 const NBuffer = 2
+const BufferSize = 60
+const BuffSizeFactor = 5
+const BitsInByte = 8
 const (
 	GetNextPacket = iota
 	StopStream    = iota
@@ -26,7 +32,6 @@ type AvPacket *C.struct_AVPakcket
 type MediaStreamer interface {
 	Play(timeRange headers.Range)
 	Pause(timeRange headers.Range)
-	Init(mediaId string, rtpConn net.PacketConn, rtcpConn net.PacketConn)
 }
 
 type Buffer struct {
@@ -41,6 +46,21 @@ type Streamer struct {
 	media.RepoI
 	buffer        Buffer
 	bufferCommand chan BufferCommand
+	rtpConn       net.PacketConn
+	OutByteRate   int
+}
+
+func Init(mediaRecord media.Media, streamId int, rtpConn net.PacketConn, rtcpConn net.PacketConn) (*Streamer, error) {
+	streamer := &Streamer{}
+	streamer.OutByteRate = int(math.Ceil(float64(mediaRecord.Streams[streamId].BitRate) / float64(BitsInByte)))
+	buffSizeByte := C.int(BuffSizeFactor * streamer.OutByteRate)
+	// TODO change Stream.Path to Stream.Name
+	streamPath := C.CString(media.GetStreamPath(mediaRecord.Streams[streamId].Path))
+	mediaBuffer := C.init_media_buffer(streamPath, buffSizeByte)
+	if mediaBuffer == nil {
+		return nil, errors.New("failed to create media buffer")
+	}
+	return streamer, nil
 }
 
 type BufferCommand struct {
@@ -54,21 +74,15 @@ func (s Streamer) Play(timeRange headers.Range) {
 }
 
 func (s Streamer) Pause(timeRange headers.Range) {
-
-	panic("implement me")
-}
-
-func (s Streamer) Init(mediaId string, rtpConn net.PacketConn, rtcpConn net.PacketConn) {
-	//TODO implement me
 	panic("implement me")
 }
 
 func (s Streamer) startServer(rtpConn net.PacketConn, control chan int, streamId int) {
-	buff := make([]byte, rtp.MTU)
+	buff := make([]byte, MTU)
 	nBytesRead, a, err := rtpConn.ReadFrom(buff)
 	mediaData := s.GetMedia(s.mediaId)
 	stream := mediaData.Streams[streamId]
-	packet := rtp.ParseRtpPacket(buff, nBytesRead)
+	packet := parser.ParseRtpPacket(buff, nBytesRead)
 	_ = packet
 	_ = a
 	_ = stream
@@ -77,7 +91,7 @@ func (s Streamer) startServer(rtpConn net.PacketConn, control chan int, streamId
 	}
 	t0 := 0
 
-	maxByteOut := 1000
+	maxByteOut := s.OutByteRate
 	remainingSize := maxByteOut
 	go s.buffer.BufferUp()
 	for {
@@ -104,12 +118,10 @@ func (s Streamer) startServer(rtpConn net.PacketConn, control chan int, streamId
 				{
 					lastCommand = <-s.bufferCommand
 				}
-
 			case Seek:
 				{
 
 				}
-
 			}
 		}
 		if err != nil {
@@ -137,11 +149,11 @@ func (buffer Buffer) ReadNextPacket(peek bool) *C.struct_AVPacket {
 		currentPacket := *(**C.struct_AVPacket)(unsafe.Add(packets, unsafe.Sizeof(currentBuff.packets)*uintptr(currentBuff.currentIdx)))
 		if !peek {
 			currentBuff.currentIdx = currentBuff.currentIdx + 1
+			currentBuff.currentByteSize -= currentPacket.size
 		}
 		return currentPacket
 	}
 }
-
 
 func (buffer Buffer) BufferUp() {
 	for {

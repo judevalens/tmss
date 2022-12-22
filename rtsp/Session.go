@@ -34,7 +34,7 @@ type Session struct {
 	playsWatcher     chan bool
 	currentRange     headers.Range
 	resumePoint      float64
-	streams          map[string]MediaStreamer
+	streams          []MediaStreamer
 }
 
 type MediaProvider interface {
@@ -45,7 +45,6 @@ type MediaProvider interface {
 type MediaStreamer interface {
 	Play(timeRange headers.Range)
 	Pause(timeRange headers.Range)
-	Init(mediaId string, rtpConn net.PacketConn, rtcpConn net.PacketConn)
 }
 
 func OpenNewSession(mediaId string, m media.Media) Session {

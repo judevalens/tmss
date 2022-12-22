@@ -1,4 +1,4 @@
-package rtp
+package parser
 
 import (
 	"encoding/binary"

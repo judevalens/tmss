@@ -1,21 +1,28 @@
 package rtp
 
 import (
+	"errors"
 	"net"
+	"tmss/media"
+	"tmss/rtp/h264"
 	"tmss/rtsp/headers"
 )
 
-const MTU = 65000
 
 type MediaControl struct {
 	teardown bool
 }
 
+const (
+	H264Codec = "H264"
+	AccCodec  = "MP4A-LATM"
+)
+
 type MediaStreamer interface {
 	Play(timeRange headers.Range)
 	Pause(timeRange headers.Range)
-	Init(mediaId string, rtpConn net.PacketConn, rtcpConn net.PacketConn)
 }
+
 
 type Session struct {
 	AudioPort    int
@@ -34,36 +41,13 @@ func (session Session) Pause(timeRange headers.Range) {
 	panic("implement me")
 }
 
-func (session Session) Init(mediaId string, rtpConn net.PacketConn, rtcpConn net.PacketConn) {
-	//TODO implement me
-	panic("implement me")
-}
-
-func (session Session) startAudioTransmitter() {
-	udp, err := net.ListenUDP("udp", &net.UDPAddr{Port: session.AudioPort})
-	if err != nil {
-		return
+func InitRtpStream(media media.Media, streamId int, rtpConn net.PacketConn, rtcpConn net.PacketConn) (MediaStreamer, error) {
+	var streamer MediaStreamer
+	switch media.Streams[streamId].RtpFormat {
+	case H264Codec:
+		streamer, _ = h264.Init(media, streamId, rtpConn, rtcpConn)
+	default:
+		return nil, errors.New("codec is not supported")
 	}
-	buff := make([]byte, MTU)
-	_, _, err = udp.ReadFrom(buff)
-	if err != nil {
-		return
-	}
-
-	for {
-		select {
-		case mediaControl := <-session.mediaControl:
-			{
-				if mediaControl.teardown {
-					return
-				}
-				//TODO transmit audio
-				session.transmitAudioPacket(udp, mediaControl)
-			}
-		}
-	}
-}
-
-func (session Session) transmitAudioPacket(conn *net.UDPConn, mediaControl MediaControl) {
-	//TODO transmit data
+	return streamer, nil
 }

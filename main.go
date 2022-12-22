@@ -4,13 +4,12 @@ import (
 	"fmt"
 	"io/ioutil"
 	"tmss/media"
-	"tmss/rtsp"
 )
 
 const mediaPath = "/home/jude/Desktop/amnis_server/big_buck_bunny.mp4"
 
 func main() {
-	rtsp.InitRtspServer()
+	//rtsp.InitRtspServer()
 
 	file, err := ioutil.ReadFile(mediaPath)
 	if err != nil {

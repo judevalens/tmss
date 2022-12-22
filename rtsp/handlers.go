@@ -10,6 +10,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 	"tmss/media"
@@ -42,7 +43,12 @@ func (handler Handler) SetUpHandler(resWriter http.ResponseWriter, request *http
 	fmt.Printf("new set up request: %v\n", request.Method)
 	sessionBuf := make([]byte, SessionLen)
 	mediaId := mux.Vars(request)["id"]
-	streamId := mux.Vars(request)["streamId"]
+	streamId, err := strconv.Atoi(mux.Vars(request)["streamId"])
+
+	if err != nil {
+		log.Fatal("invalid stream id")
+		resWriter.WriteHeader(http.StatusBadRequest)
+	}
 	var sessionId string
 	var session Session
 	r := rand.New(rand.NewSource(uint64(time.Now().Nanosecond())))
@@ -67,10 +73,9 @@ func (handler Handler) SetUpHandler(resWriter http.ResponseWriter, request *http
 		log.Fatal(err)
 		return
 	}
-	streamer := rtp.Session{}
-	streamer.Init(mediaId, rtpConn.conn, rtcpConn.conn)
-	session.streams[streamId] = streamer
-
+	mediaData := handler.MediaRepo.GetMedia(mediaId)
+	//TODO check that the mediaId is valid
+	session.streams[streamId], _ = rtp.InitRtpStream(mediaData, streamId, rtpConn.conn, rtcpConn.conn)
 	transports := headers.ParseTransport(request.Header.Get(TransportHeader))
 	handler.sessions[sessionId] = Session{
 		Transport: transports[0],

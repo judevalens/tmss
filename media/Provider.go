@@ -45,6 +45,7 @@ type Media struct {
 	Streams   []Stream
 }
 type Stream struct {
+	Path        string
 	MediaType   string
 	Format      string
 	RtpFormat   string
@@ -54,6 +55,8 @@ type Stream struct {
 	TimeBaseDen int
 	PayloadType int
 	BitRate     int
+	SampleRate  int
+	FPS         int
 }
 
 func NewJsonRepo() *JsonRepo {
@@ -141,7 +144,8 @@ func (repo JsonRepo) AddMedia(rawMedia []byte, name string) {
 	ext := path.Ext(name)
 	fmt.Printf("file path: %v\n", mediaID)
 	fileParts := strings.Split(path.Base(name), ext)
-	filePath := path.Join(mediaPath, fileParts[0]+mediaID+ext)
+	fileName := fileParts[0] + mediaID + ext
+	filePath := path.Join(mediaPath, fileName)
 	fmt.Printf("file path: %v\n", filePath)
 	err = ioutil.WriteFile(filePath, rawMedia, os.ModePerm)
 	if err != nil {
@@ -149,16 +153,22 @@ func (repo JsonRepo) AddMedia(rawMedia []byte, name string) {
 	}
 	mediaCtx := C.open_media(C.CString(filePath))
 	media := buildMedia(mediaCtx)
-	media.Name = name
+	media.Name = fileName
 	repo.Media[mediaID] = media
 	fmt.Printf("%v\n", media)
+
+	streamNames := C.demux_file(mediaCtx)
+	for i := 0; i < len(media.Streams); i++ {
+		streamNamesPtr := unsafe.Pointer(streamNames)
+		streamName := (**C.char)(unsafe.Add(streamNamesPtr, unsafe.Sizeof(streamNamesPtr)*uintptr(i)))
+		media.Streams[i].Path = C.GoString(*streamName)
+	}
 	mediaRepoJson, err := json.Marshal(repo)
 	if err != nil {
 		return
 	}
 	mediaRepoPath := path.Join(homeDir, AppDir, JsonRepoName)
 	fmt.Printf("%v", string(mediaRepoJson))
-
 	err = ioutil.WriteFile(mediaRepoPath, mediaRepoJson, os.ModePerm)
 	if err != nil {
 		log.Fatal(err)
@@ -177,8 +187,8 @@ func buildMedia(mediaCtx *C.struct_AVFormatContext) Media {
 	ptr := unsafe.Pointer(mediaCtx.streams)
 	payloadType := 96
 	for i = 0; i < mediaCtx.nb_streams; i++ {
-		streams := (**C.struct_AVStream)(unsafe.Pointer(uintptr(ptr) + uintptr(i)*unsafe.Sizeof(*mediaCtx.streams)))
-		avStream := *streams
+		AVStreams := (**C.struct_AVStream)(unsafe.Pointer(uintptr(ptr) + uintptr(i)*unsafe.Sizeof(*mediaCtx.streams)))
+		avStream := *AVStreams
 		avCodec := C.avcodec_find_encoder(avStream.codecpar.codec_id)
 		profile := C.av_get_profile_name(avCodec, avStream.codecpar.profile)
 
@@ -192,10 +202,22 @@ func buildMedia(mediaCtx *C.struct_AVFormatContext) Media {
 			TimeBaseNum: int(avStream.time_base.num),
 			TimeBaseDen: int(avStream.time_base.den),
 			PayloadType: payloadType,
+			FPS:         int(avStream.avg_frame_rate.num),
+			SampleRate:  int(avStream.codecpar.sample_rate),
+			BitRate:     int(avStream.codecpar.bit_rate),
 		}
 		payloadType++
 		media.Streams[i] = stream
 	}
 
 	return media
+}
+
+func GetStreamPath(streamName string) string{
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		log.Fatal(err)
+		return ""
+	}
+	return path.Join(homeDir, AppDir,streamName)
 }

@@ -20,6 +20,9 @@ typedef struct PacketBuffer {
     int end;
     int currentIdx;
     int size;
+    int byteSize;
+    int totalByteSize;
+    int currentByteSize;
 } *PacketBuffer;
 
 
@@ -35,4 +38,4 @@ MediaBuffer init_media_buffer(char *mediaPath, int bufferSize);
 
 void buffer(MediaBuffer mediaBuffer, int bufferIdx);
 int seek(MediaBuffer mediaBuffer, int64_t position);
-void demux_file(AVFormatContext *mediaContext, char *OutUrl);
+char ** demux_file(AVFormatContext *mediaContext);
