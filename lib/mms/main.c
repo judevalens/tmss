@@ -15,9 +15,11 @@ AVFormatContext* openMedia();
 
 int main() {
     printf("codec name: %s\n", avcodec_get_name( AV_CODEC_ID_AAC_LATM));
-    AVFormatContext  *ctx = open_media("/home/jude/Desktop/amnis_server/big_buck_bunny.mp4");
-    printf("demuxing\n");
-   demux_file(ctx);
+   AVFormatContext  *ctx = open_media("/home/jude/Desktop/amnis_server/big_buck_bunny.mp4");
+   // printf("demuxing\n");
+ //  demux_file(ctx);
+ int buffSize =  1024;
+//    MediaBuffer  b = init_media_buffer("/home/jude/Desktop/amnis_server/big_buck_bunny.mp4",buffSize);
     return 0;
 }
 

@@ -45,10 +45,14 @@ type MediaProvider interface {
 type MediaStreamer interface {
 	Play(timeRange headers.Range)
 	Pause(timeRange headers.Range)
+	HandleRtcp()
+	HandleRtp()
 }
 
-func OpenNewSession(mediaId string, m media.Media) Session {
-	return Session{}
+func OpenNewSession(mediaId string, mediaRecord media.Media) Session {
+	return Session{
+		streams: make([]MediaStreamer, len(mediaRecord.Streams)),
+	}
 }
 
 func (session Session) SessionStart() error {
@@ -111,8 +115,8 @@ func (session Session) queueFrame() {
 }
 
 type ConnAlloc struct {
-	conn net.PacketConn
-	port int
+	Conn net.PacketConn
+	Port int
 }
 
 func GetConn() (ConnAlloc, ConnAlloc, error) {
@@ -133,12 +137,12 @@ func GetConn() (ConnAlloc, ConnAlloc, error) {
 		}
 
 		return ConnAlloc{
-				conn: rtpConn,
-				port: i - 1,
+				Conn: rtpConn,
+				Port: i - 1,
 			},
 			ConnAlloc{
-				conn: rtcpConn,
-				port: i,
+				Conn: rtcpConn,
+				Port: i,
 			}, nil
 	}
 	return ConnAlloc{}, ConnAlloc{}, errors.New("failed to open connections")

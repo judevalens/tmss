@@ -7,7 +7,7 @@ import (
 )
 
 const RtpHeaderSize = 16
-const RtpVersion = 2
+const RtpVersion = 1
 
 const (
 	H264PayloadType = iota
@@ -72,17 +72,16 @@ func parseRtpHeader(data []byte) Header {
 }
 
 func serializeRtpHeader(header Header) []byte {
-
 	rawHeader := make([]byte, RtpHeaderSize+(4*(int)(header.CsrcCount)))
+	rawHeader[0] = rawHeader[0] | (header.Version)
 	rawHeader[0] = rawHeader[0] | (header.Padding << 2)
 	rawHeader[0] = rawHeader[0] | (header.Extension << 3)
 	rawHeader[0] = rawHeader[0] | (header.CsrcCount << 4)
 	rawHeader[1] = rawHeader[1] | (header.Marker)
 	rawHeader[1] = rawHeader[1] | (header.PayloadType << 1)
-	binary.BigEndian.PutUint32(rawHeader[2:4], uint32(header.CsrcCount))
+	binary.BigEndian.PutUint16(rawHeader[2:4], header.SequenceNumber)
 	binary.BigEndian.PutUint32(rawHeader[4:8], header.Timestamp)
 	binary.BigEndian.PutUint32(rawHeader[8:12], header.SSRC)
-
 	for i := 0; i < (int)(header.CsrcCount); i++ {
 		s := 12 + (4 * i)
 		binary.BigEndian.PutUint32(rawHeader[s:s+4], header.CSRC[i])
@@ -90,10 +89,11 @@ func serializeRtpHeader(header Header) []byte {
 	return rawHeader
 }
 
-func SerializeRTPPacket(header []byte, payload []byte) []byte {
-	rawPacket := make([]byte, len(header)+len(payload))
-	copy(rawPacket, header)
-	copy(rawPacket[len(header):], payload)
+func SerializeRTPPacket(header Header, payload []byte) []byte {
+	rawHeader := serializeRtpHeader(header)
+	rawPacket := make([]byte, len(rawHeader)+len(payload))
+	copy(rawPacket, rawHeader)
+	copy(rawPacket[len(rawHeader):], payload)
 	return rawPacket
 }
 

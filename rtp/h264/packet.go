@@ -2,9 +2,7 @@ package h264
 
 import (
 	"fmt"
-	"math"
 	"strconv"
-	"tmss/rtp/parser"
 )
 
 const (
@@ -109,12 +107,7 @@ type Mtap24PacketContainer struct {
 	Units  []Mtap24Unit
 }
 
-type FUa struct {
-	FuIndicator NAlHeader
-	FuHeader    FuHeader
-	DoN         int16
-	Payload     []byte
-}
+
 
 func (packet SingleNalPacket) serialize() []byte {
 	var header byte
@@ -154,32 +147,3 @@ func getFuHeader(header byte) FuHeader {
 	}
 }
 
-func (packet FUa) serialize(header []byte, data []byte, maxPacketSize int) [][]byte {
-	nFragment := (int)(math.Ceil(float64(len(data)) / float64(maxPacketSize)))
-	rawPackets := make([][]byte, nFragment)
-	var fuIndicator byte
-	var fuHeader byte
-
-	fuIndicator = fuIndicator | packet.FuIndicator.ForbiddenBit
-	fuIndicator = fuIndicator | (packet.FuIndicator.NRI << 2)
-	fuIndicator = fuIndicator | (packet.FuIndicator.NalType << 3)
-
-	fuHeader = fuHeader | packet.FuHeader.Start
-	fuHeader = fuHeader | (packet.FuHeader.End << 1)
-	fuHeader = fuHeader | (packet.FuHeader.Reserved << 2)
-	fuHeader = fuHeader | (packet.FuHeader.Type << 3)
-	startIndex := 0
-	endIndex := 0
-	println(nFragment)
-	for i := 0; i < nFragment; i++ {
-		endIndex = startIndex + int(math.Min(float64(maxPacketSize), float64(len(data)-startIndex)))
-		rawPackets[i] = data[startIndex:endIndex]
-		payloadFragment := make([]byte, 2+endIndex-startIndex)
-		payloadFragment[0] = fuIndicator
-		payloadFragment[1] = fuHeader
-		copy(payloadFragment[2:], data[startIndex:endIndex])
-		rawPackets[i] = parser.SerializeRTPPacket(header, payloadFragment)
-		startIndex += maxPacketSize
-	}
-	return rawPackets
-}

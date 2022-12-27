@@ -2,6 +2,7 @@ package headers
 
 import (
 	"fmt"
+	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
@@ -9,19 +10,19 @@ import (
 )
 
 type Transport struct {
-	Profile        string
+	Profile        string `field_type:"val"`
 	LowerTransport string
-	Append         bool
-	IsUnicast      bool
-	Destination    string
-	Interleaved    string
-	TTL            string
-	Layers         string
-	Port           string
-	ClientPort     string
-	ServerPort     string
-	Ssrc           string
-	Mode           string
+	Append      string   `field_type:"key" optional:"true" name:"append"`
+	CastMode    string `field_type:"val" optional:"false"`
+	Destination string `field_type:"key_val" optional:"true"`
+	Interleaved    string `field_type:"key_val" optional:"false"`
+	TTL            string `field_type:"key_val" optional:"false"`
+	Layers         string `field_type:"key_val" optional:"false"`
+	Port           string `field_type:"key_val" optional:"false"`
+	ClientPort     string `field_type:"key_val" optional:"true" name:"client_port"`
+	ServerPort     string `field_type:"key_val" optional:"true" name:"server_port"`
+	Ssrc           string `field_type:"key_val" optional:"false"`
+	Mode           string `field_type:"key_val" optional:"false"`
 }
 
 type Range struct {
@@ -34,20 +35,19 @@ func ParseTransport(input string) []Transport {
 	transportsString := strings.Split(input, ",")
 	var transports []Transport
 	for i, transport := range transportsString {
-		t := Transport{}
 		transports = append(transports, Transport{})
 		components := strings.Split(transport, ";")
-		t.Profile = components[0]
+		transports[i].Profile = components[0]
 
 		for j := 1; j < len(components); j++ {
 			paramComponents := strings.Split(components[j], "=")
 			key := strings.TrimSpace(paramComponents[0])
 			hasValue := len(paramComponents) >= 2
 			switch key {
-			case "unicast":
-				transports[i].IsUnicast = true
-			case "multicast":
-				transports[i].IsUnicast = false
+			case "unicast","multicast":
+				transports[i].CastMode = key
+			case "append":
+				transports[i].Append = paramComponents[1]
 			case "destination":
 				if hasValue {
 					transports[i].Destination = paramComponents[1]
@@ -72,9 +72,10 @@ func ParseTransport(input string) []Transport {
 
 		}
 	}
-
 	return transports
 }
+
+func SerializeTransport() {}
 
 func ParseRange(input string) (Range, error) {
 	myRange := Range{}
@@ -129,5 +130,32 @@ func ParseRange(input string) (Range, error) {
 }
 
 func (t Transport) Serialize() string {
-	return ""
+	var transportType = reflect.TypeOf(t)
+	TransportR := reflect.ValueOf(t)
+	serializedTransport := ""
+	for i := 0; i < transportType.NumField(); i++ {
+		field := transportType.Field(i)
+		val :=TransportR.Field(i).String()
+		key  :=  strings.ToLower(field.Name)
+
+		if tag,found := field.Tag.Lookup("name");found {
+			key	= tag
+		}
+		if val == "" {
+			continue
+		}
+		switch field.Tag.Get("field_type") {
+		case "val":
+			serializedTransport += val
+		case "key" :
+			serializedTransport += key
+		case "key_val":
+				serializedTransport += key+"="+val
+		}
+		if i < transportType.NumField()-1 {
+			serializedTransport +=";"
+		}
+	}
+	fmt.Printf("%v\n",serializedTransport)
+	return serializedTransport
 }

@@ -4,8 +4,12 @@ package h264
 // #include "/usr/local/usr/include/video_reader.h"
 import "C"
 import (
+	"encoding/base64"
 	"errors"
+	"fmt"
+	"log"
 	"math"
+	"math/rand"
 	"net"
 	"time"
 	"tmss/media"
@@ -14,11 +18,7 @@ import (
 	"unsafe"
 )
 
-const MTU = 65000
-const NBuffer = 2
-const BufferSize = 60
-const BuffSizeFactor = 5
-const BitsInByte = 8
+const DefaultFragmentationType = 28
 const (
 	GetNextPacket = iota
 	StopStream    = iota
@@ -28,37 +28,56 @@ const (
 	Seek
 )
 
-type AvPacket *C.struct_AVPakcket
 type MediaStreamer interface {
 	Play(timeRange headers.Range)
 	Pause(timeRange headers.Range)
+	HandleRtcp()
+	HandleRtp()
 }
-
-type Buffer struct {
-	CurrentBuffer    *C.struct_MediaBuffer
-	currentBufferIdx int
-	buffChan         chan int
-	isBuffering      bool
-}
-
 type Streamer struct {
-	mediaId string
-	media.RepoI
-	buffer        Buffer
-	bufferCommand chan BufferCommand
-	rtpConn       net.PacketConn
-	OutByteRate   int
+	mediaId        string
+	mediaRecord    media.Media
+	buffer         *Buffer
+	bufferCommand  chan BufferCommand
+	rtpConn        net.PacketConn
+	rtcpConn       net.PacketConn
+	OutByteRate    int
+	streamID       int
+	PayloadType    byte
+	SequenceNumber int32
+	SSRC           int32
+	tsIncrement    uint32
+	rtpTimestamp   uint32
+	ClientAddr     net.Addr
+	CodecHeader    Header
 }
 
 func Init(mediaRecord media.Media, streamId int, rtpConn net.PacketConn, rtcpConn net.PacketConn) (*Streamer, error) {
-	streamer := &Streamer{}
+	streamer := &Streamer{
+		rtpConn:     rtpConn,
+		rtcpConn:    rtcpConn,
+		streamID:    streamId,
+		mediaRecord: mediaRecord,
+	}
+	decodedHeaderBytes, err := base64.StdEncoding.DecodeString(mediaRecord.Streams[streamId].HeaderB64)
+	if err != nil {
+		return nil, err
+	}
+	streamer.CodecHeader = ParseAvccHeader(decodedHeaderBytes)
 	streamer.OutByteRate = int(math.Ceil(float64(mediaRecord.Streams[streamId].BitRate) / float64(BitsInByte)))
+	fmt.Printf("byte rate: %v\n", streamer.OutByteRate)
 	buffSizeByte := C.int(BuffSizeFactor * streamer.OutByteRate)
 	// TODO change Stream.Path to Stream.Name
 	streamPath := C.CString(media.GetStreamPath(mediaRecord.Streams[streamId].Path))
+	fmt.Printf("stream path: %v\n", streamPath)
 	mediaBuffer := C.init_media_buffer(streamPath, buffSizeByte)
 	if mediaBuffer == nil {
 		return nil, errors.New("failed to create media buffer")
+	}
+	streamer.buffer = &Buffer{
+		CurrentBuffer: mediaBuffer,
+		buffChan:      make(chan int),
+		isBuffering:   false,
 	}
 	return streamer, nil
 }
@@ -77,88 +96,121 @@ func (s Streamer) Pause(timeRange headers.Range) {
 	panic("implement me")
 }
 
-func (s Streamer) startServer(rtpConn net.PacketConn, control chan int, streamId int) {
-	buff := make([]byte, MTU)
-	nBytesRead, a, err := rtpConn.ReadFrom(buff)
-	mediaData := s.GetMedia(s.mediaId)
-	stream := mediaData.Streams[streamId]
-	packet := parser.ParseRtpPacket(buff, nBytesRead)
-	_ = packet
-	_ = a
-	_ = stream
-	lastCommand := BufferCommand{
-		command: Idle,
-	}
-	t0 := 0
+func (s Streamer) HandleRtp() {
+	go func() {
+		fmt.Printf("trying to send rtp packets\n")
+		//buff := make([]byte, MTU)
+		//nBytesRead, a, err := s.rtpConn.ReadFrom(buff)
+		//if err != nil {
+		//	return
+		//}
 
-	maxByteOut := s.OutByteRate
-	remainingSize := maxByteOut
-	go s.buffer.BufferUp()
-	for {
-		select {
-		case newCommand := <-s.bufferCommand:
-			lastCommand = newCommand
-		default:
-			switch lastCommand.command {
-			case Play:
-				{
-					if t0 <= 0 || time.Now().Sub(time.Unix(0, int64(t0))) > time.Second {
-						t0 = time.Now().Nanosecond()
-						remainingSize = maxByteOut
-					}
-					avPacket := s.buffer.ReadNextPacket(true)
-					if int(avPacket.size) > remainingSize {
-						continue
-					}
-					avPacket = s.buffer.ReadNextPacket(false)
-					//TODO send packet
-					remainingSize -= int(avPacket.size)
-				}
-			case Pause:
-				{
-					lastCommand = <-s.bufferCommand
-				}
-			case Seek:
-				{
+		//s.ClientAddr = a
+		//stream := s.mediaRecord.Streams[s.streamID]
+		//_ = nBytesRead
+		//_ = a
+		//	_ = stream
+		lastCommand := BufferCommand{
+			command: Play,
+		}
+		t0 := 0
 
+		maxByteOut := s.OutByteRate
+		remainingSize := maxByteOut
+		go s.buffer.BufferUp()
+		for {
+
+			select {
+			case newCommand := <-s.bufferCommand:
+				lastCommand = newCommand
+			default:
+				switch lastCommand.command {
+				case Play:
+					{
+						println("sending AVPackets.....")
+						if t0 <= 0 || time.Now().Sub(time.Unix(0, int64(t0))) > time.Second {
+							t0 = time.Now().Nanosecond()
+							remainingSize = maxByteOut
+						}
+						/*avPacket := s.buffer.ReadNextPacket(true)
+
+						fmt.Printf("sending packet; pts: %v, size: %v\n", avPacket.pts, avPacket.size)
+
+						if int(avPacket.size) > remainingSize {
+							continue
+						}*/
+						avPacket := s.buffer.ReadNextPacket(false)
+						if avPacket == nil {
+							return
+						}
+						encodedPacket := C.GoBytes(unsafe.Pointer(avPacket.data), C.int(avPacket.size))
+
+						fmt.Printf("packets: %v\n", encodedPacket[:20])
+						//time.Sleep(time.Second * 1)
+						//AvccToNalU()
+						AvccToNalU(s.CodecHeader,encodedPacket)
+						//TODO send packet
+						remainingSize -= int(avPacket.size)
+					}
+				case Pause:
+					{
+						lastCommand = <-s.bufferCommand
+					}
+				case Seek:
+					{
+
+					}
 				}
 			}
 		}
+	}()
+}
+
+func (s Streamer) HandleRtcp() {
+	go func() {
+		for {
+			buff := make([]byte, MTU)
+			n, from, err := s.rtcpConn.ReadFrom(buff)
+			fmt.Printf("received msg from: %s\n%s\n", from, string(buff[:n]))
+			if err != nil {
+				return
+			}
+
+		}
+	}()
+
+}
+
+func (s Streamer) SendPacket(data []byte) {
+	var fragments [][]byte
+	if len(data) > MTU {
+		fragments = SplitSingleNal(data, DefaultFragmentationType, MTU)
+	} else {
+		fragments = [][]byte{data}
+	}
+	s.rtpTimestamp += s.tsIncrement
+	for _, f := range fragments {
+		rtpHeader := parser.Header{
+			Version:        parser.RtpVersion,
+			PayloadType:    s.PayloadType,
+			SequenceNumber: uint16(s.GetNextSeqNumber()),
+			Timestamp:      s.rtpTimestamp,
+			SSRC:           uint32(s.SSRC),
+		}
+		rtpPacket := parser.SerializeRTPPacket(rtpHeader, f)
+		_, err := s.rtpConn.WriteTo(rtpPacket, s.ClientAddr)
 		if err != nil {
+			log.Fatal(err)
 			return
 		}
 	}
+	return
 }
 
-func (buffer Buffer) ReadNextPacket(peek bool) *C.struct_AVPacket {
-	for {
-		//TODO need to check pos is within the BOUND
-		CurrentBufferPtr := unsafe.Pointer(buffer.CurrentBuffer.packetBuffers)
-		currentBuff := *(**C.struct_PacketBuffer)(unsafe.Add(CurrentBufferPtr, unsafe.Sizeof(buffer.CurrentBuffer.packetBuffers)*uintptr(buffer.currentBufferIdx)))
-		// the flag isBuffering prevents re-buffering the next queue before it is used or is being buffered
-		if float32(currentBuff.currentIdx)/float32(currentBuff.size) <= 0.5 && !buffer.isBuffering {
-			buffer.isBuffering = !buffer.isBuffering
-			nextBuffIdx := (buffer.currentBufferIdx + 1) % NBuffer
-			buffer.buffChan <- nextBuffIdx
-		}
-		if currentBuff.currentIdx == currentBuff.size {
-			buffer.currentBufferIdx = <-buffer.buffChan
-			buffer.isBuffering = !buffer.isBuffering
-		}
-		packets := unsafe.Pointer(currentBuff.packets)
-		currentPacket := *(**C.struct_AVPacket)(unsafe.Add(packets, unsafe.Sizeof(currentBuff.packets)*uintptr(currentBuff.currentIdx)))
-		if !peek {
-			currentBuff.currentIdx = currentBuff.currentIdx + 1
-			currentBuff.currentByteSize -= currentPacket.size
-		}
-		return currentPacket
+func (s Streamer) GetNextSeqNumber() int32 {
+	if s.SequenceNumber == 0 {
+		s.SequenceNumber = rand.Int31()
 	}
-}
-
-func (buffer Buffer) BufferUp() {
-	for {
-		bufferIdx := <-buffer.buffChan
-		C.buffer(buffer.CurrentBuffer, C.int(bufferIdx))
-		buffer.buffChan <- bufferIdx
-	}
+	s.SequenceNumber += 1
+	return s.SequenceNumber
 }

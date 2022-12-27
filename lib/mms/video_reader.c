@@ -7,7 +7,7 @@
 #define FRAME_BUFFER_SIZE  5
 #define AUDIO_SUFFIX  "_AUDIO"
 #define VIDEO_SUFFIX  "_VIDEO"
-#define MAX_URL_LEN     250
+#define MAX_URL_LEN     500
 #define FILE_URL_SCHEME "file:"
 #define DEFAULT_DIR "/home/jude/Desktop/amnis server/"
 #define BUFF_INIT_SIZE 10
@@ -22,6 +22,9 @@ AVFormatContext *open_media(char *mediaPath) {
            mediaContext->nb_streams, mediaContext->iformat->long_name);
     for (int i = 0; i < mediaContext->nb_streams; i++) {
         AVStream *current_stream = mediaContext->streams[i];
+        printf("extra data size: %d\n",current_stream->codecpar->extradata_size);
+
+
         /*const AVCodecDescriptor *code_desc = avcodec_descriptor_get(current_stream->codecpar->codec_id);
         printf("# %d, codec type %s, media_type %s \n",current_stream->id,code_desc->name,av_get_media_type_string(code_desc->type));*/
         printf("fps or sample rate: %d,nb frames: %ld\n", current_stream->codecpar->sample_rate,
@@ -40,20 +43,29 @@ AVFormatContext *open_media(char *mediaPath) {
 }
 
 MediaBuffer init_media_buffer(char *mediaPath, int bufferByteSize) {
+    
     int err;
     MediaBuffer mediaBuffer;
     AVFormatContext *mediaContext = avformat_alloc_context();
-    err = avformat_open_input(&mediaContext, mediaPath, NULL, NULL);
-    if (err) {
+
+    char *fileUrl = malloc(sizeof(char *) * MAX_URL_LEN);
+    if (snprintf(fileUrl,MAX_URL_LEN,"%s%s",FILE_URL_SCHEME,mediaPath) < 0) {
+        return NULL;
+    }
+    err = avformat_open_input(&mediaContext, fileUrl, NULL, NULL);
+    if (err < 0) {
         printf("could not open media file\nerr: %s", av_err2str(err));
     }
-    mediaBuffer = malloc(sizeof(MediaBuffer));
+     mediaBuffer = malloc(sizeof(MediaBuffer));
     mediaBuffer->mediaContext = mediaContext;
     mediaBuffer->packetBuffers = malloc(sizeof(PacketBuffer *) * 2);
     for (int i = 0; i < 2; i++) {
-        mediaBuffer->packetBuffers[i] = malloc(sizeof(PacketBuffer));
-        mediaBuffer->packetBuffers[i]->totalByteSize = bufferByteSize;
+        mediaBuffer->packetBuffers[i] = malloc(sizeof(struct PacketBuffer));
+      //  mediaBuffer->packetBuffers[i]->totalByteSize = 100;
         mediaBuffer->packetBuffers[i]->size = BUFF_INIT_SIZE;
+        mediaBuffer->packetBuffers[i]->currentIdx = 0;
+        mediaBuffer->packetBuffers[i]->currentByteSize = 0;
+        mediaBuffer->packetBuffers[i]->totalByteSize = bufferByteSize;
         mediaBuffer->packetBuffers[i]->packets = malloc(sizeof(AVPacket *) * BUFF_INIT_SIZE);
     }
     return mediaBuffer;
@@ -77,16 +89,22 @@ void buffer_2(MediaBuffer mediaBuffer, int bufferIdx) {
     }
 }
 
-void buffer(MediaBuffer mediaBuffer, int bufferIdx) {
+int buffer(MediaBuffer mediaBuffer, int bufferIdx) {
     PacketBuffer buffer = mediaBuffer->packetBuffers[bufferIdx];
-    AVPacket *pkt = av_packet_alloc();
+
     for (int i = 0; i < buffer->size; i++) {
+        AVPacket *pkt = av_packet_alloc();
         int res = av_read_frame(mediaBuffer->mediaContext, pkt);
+        printf("buffering\n");
         if (res < 0) {
+            perror(av_err2str(res));
+            buffer->size = i;
+            buffer->eof = 1;
             break;
         }
         buffer->packets[i] = pkt;
     }
+    return 0;
 }
 
 

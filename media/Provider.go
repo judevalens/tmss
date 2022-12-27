@@ -3,6 +3,7 @@ package media
 import "C"
 import (
 	"crypto/sha1"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -57,6 +58,7 @@ type Stream struct {
 	BitRate     int
 	SampleRate  int
 	FPS         int
+	HeaderB64   string
 }
 
 func NewJsonRepo() *JsonRepo {
@@ -114,7 +116,7 @@ func (repo JsonRepo) GetSDPSession(mediaId string) *sdp.SessionDescription {
 				},
 				{
 					Key:   "control",
-					Value: fmt.Sprintf("streamid=%v", i),
+					Value: fmt.Sprintf("%d", i),
 				},
 			},
 		}
@@ -192,6 +194,9 @@ func buildMedia(mediaCtx *C.struct_AVFormatContext) Media {
 		avCodec := C.avcodec_find_encoder(avStream.codecpar.codec_id)
 		profile := C.av_get_profile_name(avCodec, avStream.codecpar.profile)
 
+		extraDataBytes := C.GoBytes(unsafe.Pointer(avStream.codecpar.extradata), avStream.codecpar.extradata_size)
+		extraData := base64.StdEncoding.EncodeToString(extraDataBytes)
+
 		fmt.Printf("codec id: %v, codec profile: %v, sample: %v\n", C.GoString(avCodec.long_name), avStream.codecpar.profile, C.GoString(profile))
 		stream := Stream{
 			MediaType:   C.GoString(C.av_get_media_type_string(avStream.codecpar.codec_type)),
@@ -205,6 +210,7 @@ func buildMedia(mediaCtx *C.struct_AVFormatContext) Media {
 			FPS:         int(avStream.avg_frame_rate.num),
 			SampleRate:  int(avStream.codecpar.sample_rate),
 			BitRate:     int(avStream.codecpar.bit_rate),
+			HeaderB64:   extraData,
 		}
 		payloadType++
 		media.Streams[i] = stream
@@ -213,11 +219,11 @@ func buildMedia(mediaCtx *C.struct_AVFormatContext) Media {
 	return media
 }
 
-func GetStreamPath(streamName string) string{
+func GetStreamPath(streamName string) string {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		log.Fatal(err)
 		return ""
 	}
-	return path.Join(homeDir, AppDir,streamName)
+	return path.Join(homeDir, AppDir, streamName)
 }

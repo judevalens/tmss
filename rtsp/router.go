@@ -48,7 +48,7 @@ func StartServer(router *mux.Router) {
 			for {
 				request, err := ParseRequest(conn)
 				if err != nil {
-					log.Fatalf("failed to parse request\n%v", err)
+					//log.Fatalf("failed to parse request\n%v", err)
 					return
 				}
 

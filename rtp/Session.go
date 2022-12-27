@@ -8,7 +8,6 @@ import (
 	"tmss/rtsp/headers"
 )
 
-
 type MediaControl struct {
 	teardown bool
 }
@@ -21,8 +20,9 @@ const (
 type MediaStreamer interface {
 	Play(timeRange headers.Range)
 	Pause(timeRange headers.Range)
+	HandleRtcp()
+	HandleRtp()
 }
-
 
 type Session struct {
 	AudioPort    int
@@ -31,14 +31,18 @@ type Session struct {
 	mediaControl chan MediaControl
 }
 
+func (session Session) HandleRtcp() {
+
+}
+func (session Session) HandleRtp() {
+
+}
 func (session Session) Play(timeRange headers.Range) {
-	//TODO implement me
-	panic("implement me")
+
 }
 
 func (session Session) Pause(timeRange headers.Range) {
-	//TODO implement me
-	panic("implement me")
+
 }
 
 func InitRtpStream(media media.Media, streamId int, rtpConn net.PacketConn, rtcpConn net.PacketConn) (MediaStreamer, error) {
@@ -46,6 +50,8 @@ func InitRtpStream(media media.Media, streamId int, rtpConn net.PacketConn, rtcp
 	switch media.Streams[streamId].RtpFormat {
 	case H264Codec:
 		streamer, _ = h264.Init(media, streamId, rtpConn, rtcpConn)
+	case AccCodec:
+		return Session{}, nil
 	default:
 		return nil, errors.New("codec is not supported")
 	}

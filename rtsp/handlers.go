@@ -46,7 +46,7 @@ func (handler Handler) SetUpHandler(resWriter http.ResponseWriter, request *http
 	streamId, err := strconv.Atoi(mux.Vars(request)["streamId"])
 
 	if err != nil {
-		log.Fatal("invalid stream id")
+		log.Fatalf("invalid stream id: %s", mux.Vars(request)["streamId"])
 		resWriter.WriteHeader(http.StatusBadRequest)
 	}
 	var sessionId string
@@ -75,16 +75,23 @@ func (handler Handler) SetUpHandler(resWriter http.ResponseWriter, request *http
 	}
 	mediaData := handler.MediaRepo.GetMedia(mediaId)
 	//TODO check that the mediaId is valid
-	session.streams[streamId], _ = rtp.InitRtpStream(mediaData, streamId, rtpConn.conn, rtcpConn.conn)
+	session.streams[streamId], err = rtp.InitRtpStream(mediaData, streamId, rtpConn.Conn, rtcpConn.Conn)
+
+	if err != nil {
+		log.Fatalf("failed to init stream: %v\n", err)
+	}
+	session.streams[streamId].HandleRtcp()
+	session.streams[streamId].HandleRtp()
 	transports := headers.ParseTransport(request.Header.Get(TransportHeader))
 	handler.sessions[sessionId] = Session{
 		Transport: transports[0],
 	}
-	//
-	resWriter.Header().Add(TransportHeader, request.Header.Get(TransportHeader)+";server_port=9002-9003;ssrc=1234ABCD")
+	transportHeader := headers.ParseTransport(request.Header.Get(TransportHeader))
+
+	transportHeader[0].ServerPort = fmt.Sprintf("%v-%v", rtpConn.Port, rtcpConn.Port)
+	resWriter.Header().Add(TransportHeader, transportHeader[0].Serialize())
 	resWriter.Header().Add(CSeqHeader, request.Header.Get(CSeqHeader))
 	resWriter.Header().Add(SessionHeader, sessionId)
-
 	_, err = resWriter.Write([]byte{})
 	if err != nil {
 		log.Fatal("Failed to send res to client")
