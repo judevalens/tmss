@@ -34,7 +34,8 @@ AVFormatContext *open_media(char *mediaPath) {
             entry = av_dict_get(current_stream->metadata, "", entry, AV_DICT_IGNORE_SUFFIX);
             printf("%s:%s\n", entry->key, entry->value);
         }
-        // av_dump_format(mediaContext, i, mediaContext->url, 0);
+        printf("%s\n", avcodec_get_name( current_stream->codecpar->codec_id));
+       //av_dump_format(mediaContext, i, mediaContext->url, 0);
     }
 
 

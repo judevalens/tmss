@@ -73,7 +73,3 @@ func (buffer *Buffer) BufferUp() {
 		buffer.buffChan <- bufferIdx
 	}
 }
-
-func avccToNalU(data []byte) {
-
-}

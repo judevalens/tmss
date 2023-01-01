@@ -6,8 +6,8 @@ import (
 	"strconv"
 )
 
-const RtpHeaderSize = 16
-const RtpVersion = 1
+const RtpHeaderSize = 12
+const RtpVersion byte = 2
 
 const (
 	H264PayloadType = iota
@@ -73,12 +73,12 @@ func parseRtpHeader(data []byte) Header {
 
 func serializeRtpHeader(header Header) []byte {
 	rawHeader := make([]byte, RtpHeaderSize+(4*(int)(header.CsrcCount)))
-	rawHeader[0] = rawHeader[0] | (header.Version)
-	rawHeader[0] = rawHeader[0] | (header.Padding << 2)
-	rawHeader[0] = rawHeader[0] | (header.Extension << 3)
-	rawHeader[0] = rawHeader[0] | (header.CsrcCount << 4)
-	rawHeader[1] = rawHeader[1] | (header.Marker)
-	rawHeader[1] = rawHeader[1] | (header.PayloadType << 1)
+	rawHeader[0] = rawHeader[0] | (header.Version << 6)
+	rawHeader[0] = rawHeader[0] | (header.Padding << 5)
+	rawHeader[0] = rawHeader[0] | (header.Extension << 4)
+	rawHeader[0] = rawHeader[0] | (header.CsrcCount)
+	rawHeader[1] = rawHeader[1] | (header.Marker << 7)
+	rawHeader[1] = rawHeader[1] | (header.PayloadType)
 	binary.BigEndian.PutUint16(rawHeader[2:4], header.SequenceNumber)
 	binary.BigEndian.PutUint32(rawHeader[4:8], header.Timestamp)
 	binary.BigEndian.PutUint32(rawHeader[8:12], header.SSRC)

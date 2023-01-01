@@ -12,7 +12,7 @@ type FUA struct {
 	Payload     []byte
 }
 
-func SplitSingleNal(data []byte, fragmentationType byte, maxPacketSize int) [][]byte {
+func packetizeNalUnit(data []byte, fragmentationType byte, maxPacketSize int) [][]byte {
 	nFragment := (int)(math.Ceil(float64(len(data)) / float64(maxPacketSize)))
 	rawPackets := make([][]byte, nFragment)
 	var fuIndicator byte
@@ -36,7 +36,7 @@ func SplitSingleNal(data []byte, fragmentationType byte, maxPacketSize int) [][]
 		}
 		fuHeader = fuHeader | (nalType << 3)
 		endIndex = startIndex + int(math.Min(float64(maxPacketSize), float64(len(data)-startIndex)))
-		println(2+endIndex-startIndex)
+		println(2 + endIndex - startIndex)
 		rawPackets[i] = make([]byte, 2+endIndex-startIndex)
 		rawPackets[i][0] = fuIndicator
 		rawPackets[i][1] = fuHeader

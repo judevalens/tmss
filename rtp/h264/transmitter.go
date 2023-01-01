@@ -58,6 +58,7 @@ func Init(mediaRecord media.Media, streamId int, rtpConn net.PacketConn, rtcpCon
 		rtcpConn:    rtcpConn,
 		streamID:    streamId,
 		mediaRecord: mediaRecord,
+		PayloadType: byte(mediaRecord.Streams[streamId].PayloadType),
 	}
 	decodedHeaderBytes, err := base64.StdEncoding.DecodeString(mediaRecord.Streams[streamId].HeaderB64)
 	if err != nil {
@@ -87,37 +88,43 @@ type BufferCommand struct {
 	command  int
 }
 
-func (s Streamer) Play(timeRange headers.Range) {
+func (s *Streamer) Play(timeRange headers.Range) {
 	//TODO implement me
 	panic("implement me")
 }
 
-func (s Streamer) Pause(timeRange headers.Range) {
+func (s *Streamer) Pause(timeRange headers.Range) {
 	panic("implement me")
 }
 
-func (s Streamer) HandleRtp() {
+func (s *Streamer) HandleRtp() {
 	go func() {
 		fmt.Printf("trying to send rtp packets\n")
-		//buff := make([]byte, MTU)
-		//nBytesRead, a, err := s.rtpConn.ReadFrom(buff)
-		//if err != nil {
-		//	return
-		//}
+		buff := make([]byte, MTU)
+		nBytesRead, a, err := s.rtpConn.ReadFrom(buff)
+		if err != nil {
+			return
+		}
 
-		//s.ClientAddr = a
-		//stream := s.mediaRecord.Streams[s.streamID]
-		//_ = nBytesRead
-		//_ = a
-		//	_ = stream
+		s.ClientAddr = a
+		stream := s.mediaRecord.Streams[s.streamID]
+		_ = nBytesRead
+		_ = a
+		_ = stream
 		lastCommand := BufferCommand{
 			command: Play,
 		}
 		t0 := 0
-
 		maxByteOut := s.OutByteRate
 		remainingSize := maxByteOut
 		go s.buffer.BufferUp()
+
+		// send SPS and PPS
+
+		s.SendPacket(s.CodecHeader.SPS)
+		fmt.Printf("%v\n", s.CodecHeader.SPS)
+		s.SendPacket(s.CodecHeader.PPS)
+
 		for {
 
 			select {
@@ -146,9 +153,12 @@ func (s Streamer) HandleRtp() {
 						encodedPacket := C.GoBytes(unsafe.Pointer(avPacket.data), C.int(avPacket.size))
 
 						fmt.Printf("packets: %v\n", encodedPacket[:20])
-						//time.Sleep(time.Second * 1)
-						//AvccToNalU()
-						AvccToNalU(s.CodecHeader,encodedPacket)
+						time.Sleep(time.Millisecond * 20)
+						nalUnits := AVCCToNalU(s.CodecHeader, encodedPacket)
+
+						for _, nalUnit := range nalUnits {
+							s.SendPacket(nalUnit)
+						}
 						//TODO send packet
 						remainingSize -= int(avPacket.size)
 					}
@@ -166,7 +176,7 @@ func (s Streamer) HandleRtp() {
 	}()
 }
 
-func (s Streamer) HandleRtcp() {
+func (s *Streamer) HandleRtcp() {
 	go func() {
 		for {
 			buff := make([]byte, MTU)
@@ -181,10 +191,10 @@ func (s Streamer) HandleRtcp() {
 
 }
 
-func (s Streamer) SendPacket(data []byte) {
+func (s *Streamer) SendPacket(data []byte) {
 	var fragments [][]byte
 	if len(data) > MTU {
-		fragments = SplitSingleNal(data, DefaultFragmentationType, MTU)
+		fragments = packetizeNalUnit(data, DefaultFragmentationType, MTU)
 	} else {
 		fragments = [][]byte{data}
 	}
@@ -198,16 +208,17 @@ func (s Streamer) SendPacket(data []byte) {
 			SSRC:           uint32(s.SSRC),
 		}
 		rtpPacket := parser.SerializeRTPPacket(rtpHeader, f)
-		_, err := s.rtpConn.WriteTo(rtpPacket, s.ClientAddr)
+		n, err := s.rtpConn.WriteTo(rtpPacket, s.ClientAddr)
 		if err != nil {
-			log.Fatal(err)
+			log.Fatalf("failed to send data, err : %v\n", err)
 			return
 		}
+		fmt.Printf("wrote %v to %v\n", n, s.ClientAddr)
 	}
 	return
 }
 
-func (s Streamer) GetNextSeqNumber() int32 {
+func (s *Streamer) GetNextSeqNumber() int32 {
 	if s.SequenceNumber == 0 {
 		s.SequenceNumber = rand.Int31()
 	}

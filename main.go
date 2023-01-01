@@ -11,7 +11,7 @@ import (
 const mediaPath = "/home/jude/Desktop/amnis_server/big_buck_bunny.mp4"
 
 func main() {
-	//rtsp.InitRtspServer()
+	rtsp.InitRtspServer()
 
 	a, b, err := rtsp.GetConn()
 	if err != nil {
