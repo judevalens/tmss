@@ -1,8 +1,8 @@
 package rtsp
 
 import (
-	"fmt"
 	"github.com/gorilla/mux"
+	"go.uber.org/zap"
 	"log"
 	"net"
 	"net/http"
@@ -37,9 +37,12 @@ func StartServer(router *mux.Router) {
 		log.Fatal(err)
 		return
 	}
+	zap.L().Sugar().Infow("RTSP server is running","addr",tcp.Addr())
 	for {
+
 		acceptTCP, err := tcp.AcceptTCP()
 		if err != nil {
+			zap.L().Sugar().Error(err)
 			return
 		}
 		// accept and handle a new requests
@@ -48,12 +51,10 @@ func StartServer(router *mux.Router) {
 			for {
 				request, err := ParseRequest(conn)
 				if err != nil {
+					zap.L().Sugar().Errorw("failed to parse request","client addr",conn.RemoteAddr())
 					//log.Fatalf("failed to parse request\n%v", err)
 					return
 				}
-
-				fmt.Printf("===============new request from : %v===============\n", acceptTCP.RemoteAddr())
-				fmt.Printf("req:\n%v\n", request)
 				router.ServeHTTP(ResponseWriter{
 					Response: &http.Response{
 						Proto:  RtspVersion,

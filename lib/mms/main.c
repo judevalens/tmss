@@ -1,25 +1,28 @@
 #include <stdio.h>
 #include <string.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <time.h>
 #include "libavformat/avformat.h"
 #include "libavutil/timestamp.h"
 #include "libavutil/dict.h"
 #include "libavcodec/avcodec.h"
 #include "video_reader.h"
-
 #define VIDEO_SAMPLE_URL "file:/home/jude/Downloads/buck_bunny.mp4"
 #define OUT_VIDEO_URL "file:home/jude/Downloads/buck_bunny.mkv"
 #define OUT_VIDEO_PATH "home/jude/Downloads/buck_bunny.mkv"
 #define OUT_FORMAT "MKV"
-
+#define VID "/home/jude/Desktop/amnis_server/big_buck_bunny_244e2a14a22_stream_0.mp4"
 AVFormatContext* openMedia();
 
 int main() {
-    printf("codec name: %s\n", avcodec_get_name( AV_CODEC_ID_AAC_LATM));
-   AVFormatContext  *ctx = open_media("/home/jude/Desktop/amnis_server/big_buck_bunny.mp4");
-   // printf("demuxing\n");
- //  demux_file(ctx);
- int buffSize =  1024;
-//    MediaBuffer  b = init_media_buffer("/home/jude/Desktop/amnis_server/big_buck_bunny.mp4",buffSize);
+    time_t t0;
+    time_t t1;
+    time(&t0);
+    decode(VID);
+    time(&t1);
+    printf("duration: %ld\n",t1-t0);
+
     return 0;
 }
 

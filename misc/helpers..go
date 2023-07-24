@@ -12,7 +12,7 @@ func NtpToUtc(ts uint64) int64 {
 
 func UtcToNtp(ts int64) uint64 {
 	var seconds uint64
-	seconds = seconds & uint64(ts)
-	seconds <<= 32
+	seconds = seconds | uint64(ts+utcDiff)
+	seconds = seconds << 32
 	return seconds
 }

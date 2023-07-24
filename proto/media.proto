@@ -1,0 +1,16 @@
+syntax = "proto3";
+package proto;
+option go_package = ".";
+
+message BitStream {
+  repeated Frame frames = 1;
+}
+enum FrameType {
+  I = 0;
+  P  = 1;
+  B = 2;
+}
+message Frame {
+  bytes data = 1;
+  FrameType type = 2;
+}

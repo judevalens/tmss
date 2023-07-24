@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"github.com/gorilla/mux"
 	"github.com/pion/sdp"
+	"go.uber.org/zap"
 	"golang.org/x/exp/rand"
 	"io"
-	"log"
 	"net/http"
 	"strconv"
 	"sync"
@@ -39,16 +39,21 @@ func (handler Handler) defaultTransport(sessionId string) headers.Transport {
 	return headers.Transport{}
 }
 
-func (handler Handler) SetUpHandler(resWriter http.ResponseWriter, request *http.Request) {
-	fmt.Printf("new set up request: %v\n", request.Method)
+func (handler Handler) SetUpHandler(res http.ResponseWriter, request *http.Request) {
 	sessionBuf := make([]byte, SessionLen)
 	mediaId := mux.Vars(request)["id"]
 	streamId, err := strconv.Atoi(mux.Vars(request)["streamId"])
-
 	if err != nil {
-		log.Fatalf("invalid stream id: %s", mux.Vars(request)["streamId"])
-		resWriter.WriteHeader(http.StatusBadRequest)
+		zap.L().Sugar().Errorw("Invalid or missing stream id", "stream id", mux.Vars(request)["streamId"])
+		res.WriteHeader(http.StatusBadRequest)
+		_, err := res.Write([]byte{})
+		if err != nil {
+			zap.Error(err)
+			return
+		}
+		return
 	}
+	zap.L().Sugar().Infow("new incoming request", "Method", request.Method, "stream id", streamId)
 	var sessionId string
 	var session Session
 	r := rand.New(rand.NewSource(uint64(time.Now().Nanosecond())))
@@ -56,6 +61,12 @@ func (handler Handler) SetUpHandler(resWriter http.ResponseWriter, request *http
 		if sessionId == "" {
 			_, err := r.Read(sessionBuf)
 			if err != nil {
+				zap.L().Sugar().Error(err)
+				res.WriteHeader(http.StatusInternalServerError)
+				_, err := res.Write(nil)
+				if err != nil {
+					return
+				}
 				return
 			}
 			sessionId = base64.URLEncoding.EncodeToString(sessionBuf)
@@ -70,7 +81,11 @@ func (handler Handler) SetUpHandler(resWriter http.ResponseWriter, request *http
 
 	rtpConn, rtcpConn, err := GetConn()
 	if err != nil {
-		log.Fatal(err)
+		res.WriteHeader(http.StatusInternalServerError)
+		_, err := res.Write(nil)
+		if err != nil {
+			return 
+		}
 		return
 	}
 	mediaData := handler.MediaRepo.GetMedia(mediaId)
@@ -78,7 +93,10 @@ func (handler Handler) SetUpHandler(resWriter http.ResponseWriter, request *http
 	session.streams[streamId], err = rtp.InitRtpStream(mediaData, streamId, rtpConn.Conn, rtcpConn.Conn)
 
 	if err != nil {
-		log.Fatalf("failed to init stream: %v\n", err)
+		zap.L().Sugar().Errorw("failed to set up stream","stream id",streamId,"err",err)
+		res.WriteHeader(http.StatusInternalServerError)
+		res.Write(nil)
+		return
 	}
 	session.streams[streamId].HandleRtcp()
 	session.streams[streamId].HandleRtp()
@@ -87,19 +105,19 @@ func (handler Handler) SetUpHandler(resWriter http.ResponseWriter, request *http
 		Transport: transports[0],
 	}
 	transportHeader := headers.ParseTransport(request.Header.Get(TransportHeader))
-
 	transportHeader[0].ServerPort = fmt.Sprintf("%v-%v", rtpConn.Port, rtcpConn.Port)
-	resWriter.Header().Add(TransportHeader, transportHeader[0].Serialize())
-	resWriter.Header().Add(CSeqHeader, request.Header.Get(CSeqHeader))
-	resWriter.Header().Add(SessionHeader, sessionId)
-	_, err = resWriter.Write([]byte{})
+	res.Header().Add(TransportHeader, transportHeader[0].Serialize())
+	res.Header().Add(CSeqHeader, request.Header.Get(CSeqHeader))
+	res.Header().Add(SessionHeader, sessionId)
+	_, err = res.Write([]byte{})
 	if err != nil {
-		log.Fatal("Failed to send res to client")
+		zap.L().Sugar().Errorw("failed to send res", "stream id",streamId,"remote addr",request.RemoteAddr,"err",err)
 		return
 	}
 }
 
 func (handler Handler) AnnounceHandler(resWriter http.ResponseWriter, request *http.Request) {
+	zap.L().Sugar().Infow("new incoming request", "Method", request.Method, "remote addr", request.RemoteAddr)
 	session, found := handler.sessions[request.Header.Get("Session")]
 	if !found {
 		//TODO send an error msg to client
@@ -121,27 +139,26 @@ func (handler Handler) AnnounceHandler(resWriter http.ResponseWriter, request *h
 	//TODO implement later
 }
 func (handler Handler) OptionsHandler(resWriter http.ResponseWriter, request *http.Request) {
-	fmt.Printf("new option request: %v\n", request.Method)
+	zap.L().Sugar().Infow("new incoming request", "Method", request.Method, "remote addr", request.RemoteAddr)
 	resWriter.Header()
 	resWriter.Header().Add(PublicHeader, fmt.Sprintf("%s, %s, %s, %s, %s", DESCRIBE, SETUP, TEARDOWN, PLAY, PAUSE))
 	resWriter.Header().Add("CSeq", request.Header.Get(CSeqHeader))
 	resWriter.WriteHeader(http.StatusOK)
 	_, err := resWriter.Write([]byte{})
 	if err != nil {
-		log.Fatal(err)
+		zap.L().Sugar().Error(err)
 		return
 	}
-
 }
 func (handler Handler) DescribeHandler(resWriter http.ResponseWriter, request *http.Request) {
-	//TODO get video desc
+	zap.L().Sugar().Infow("new incoming request", "Method", request.Method, "remote addr", request.RemoteAddr)
 	mediaId := mux.Vars(request)["id"]
 	sessionDescription := handler.MediaRepo.GetSDPSession(mediaId)
 	descriptionRaw := sessionDescription.Marshal()
 	resWriter.Header().Add(CSeqHeader, request.Header.Get(CSeqHeader))
 	_, err := resWriter.Write([]byte(descriptionRaw))
 	if err != nil {
-		log.Fatalf("cannot send res,%v\n", err)
+		zap.L().Sugar().Error(err)
 		return
 	}
 }
@@ -172,8 +189,6 @@ func (handler Handler) setSession(next http.Handler) http.Handler {
 			session := handler.sessions[sessionID]
 			request.WithContext(context.WithValue(request.Context(), rtspSessionKey, session))
 		}
-		println("next")
-		println(next)
 		next.ServeHTTP(writer, request)
 	})
 }

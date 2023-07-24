@@ -1,11 +1,13 @@
 package h264
+
 // #cgo LDFLAGS: -L${SRCDIR}/lib/mms/build -lmms_media
 // #include "/usr/local/usr/include/video_reader.h"
 import "C"
 import (
-	"fmt"
+	"go.uber.org/zap"
 	"unsafe"
 )
+
 const MTU = 65000
 const NBuffer = 2
 const BufferSize = 60
@@ -19,13 +21,13 @@ type Buffer struct {
 	isBuffering      bool
 	init             bool
 }
+
 func (buffer *Buffer) ReadNextPacket(peek bool) *C.struct_AVPacket {
 	for {
 		//TODO need to check pos is within the BOUND
 		CurrentBufferPtr := unsafe.Pointer(buffer.CurrentBuffer.packetBuffers)
 		currentBuff := *(**C.struct_PacketBuffer)(unsafe.Add(CurrentBufferPtr, unsafe.Sizeof(buffer.CurrentBuffer.packetBuffers)*uintptr(buffer.currentBufferIdx)))
-		fmt.Printf("reading next packet: current idx: %v, peek: %v, buff size: %v\n", currentBuff.currentIdx, peek, currentBuff.size)
-
+		zap.L().Sugar().Debugw("reading new packet", "id", currentBuff.currentIdx)
 		// the flag isBuffering prevents re-buffering the next queue before it is used or is being buffered
 		if (float32(currentBuff.currentIdx)/float32(currentBuff.size) >= 0.5) || !buffer.init {
 			if !buffer.init {
@@ -41,12 +43,10 @@ func (buffer *Buffer) ReadNextPacket(peek bool) *C.struct_AVPacket {
 				}
 				// checks if current buffer is empty
 				if currentBuff.currentIdx == currentBuff.size {
-
 					if currentBuff.eof == 1 {
-						fmt.Printf("EOF: end of stream")
+						zap.L().Info("end of stream")
 						return nil
 					}
-
 					buffer.currentBufferIdx = <-buffer.buffChan
 					currentBuff = *(**C.struct_PacketBuffer)(unsafe.Add(CurrentBufferPtr, unsafe.Sizeof(buffer.CurrentBuffer.packetBuffers)*uintptr(buffer.currentBufferIdx)))
 					currentBuff.currentIdx = 0
@@ -57,7 +57,6 @@ func (buffer *Buffer) ReadNextPacket(peek bool) *C.struct_AVPacket {
 
 		packets := unsafe.Pointer(currentBuff.packets)
 		currentPacket := *(**C.struct_AVPacket)(unsafe.Add(packets, unsafe.Sizeof(currentBuff.packets)*uintptr(currentBuff.currentIdx)))
-		fmt.Printf("buffer id: %v packet ptr: post %v\n", currentBuff.currentIdx, currentPacket.pos)
 		if !peek {
 			currentBuff.currentIdx = currentBuff.currentIdx + 1
 			currentBuff.currentByteSize -= currentPacket.size

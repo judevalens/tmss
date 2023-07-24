@@ -40,3 +40,6 @@ MediaBuffer init_media_buffer(char *mediaPath, int bufferSize);
 int buffer(MediaBuffer mediaBuffer, int bufferIdx);
 int seek(MediaBuffer mediaBuffer, int64_t position);
 char ** demux_file(AVFormatContext *mediaContext);
+
+
+char* decode(char *filePath);

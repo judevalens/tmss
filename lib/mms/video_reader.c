@@ -11,6 +11,7 @@
 #define FILE_URL_SCHEME "file:"
 #define DEFAULT_DIR "/home/jude/Desktop/amnis server/"
 #define BUFF_INIT_SIZE 10
+#define FRAME_BUFF_SIZE 4096
 
 char *getFileName(char *name);
 
@@ -22,20 +23,18 @@ AVFormatContext *open_media(char *mediaPath) {
            mediaContext->nb_streams, mediaContext->iformat->long_name);
     for (int i = 0; i < mediaContext->nb_streams; i++) {
         AVStream *current_stream = mediaContext->streams[i];
-        printf("extra data size: %d\n",current_stream->codecpar->extradata_size);
-
-
+        printf("extra data size: %d\n", current_stream->codecpar->extradata_size);
         /*const AVCodecDescriptor *code_desc = avcodec_descriptor_get(current_stream->codecpar->codec_id);
         printf("# %d, codec type %s, media_type %s \n",current_stream->id,code_desc->name,av_get_media_type_string(code_desc->type));*/
-        printf("fps or sample rate: %d,nb frames: %ld\n", current_stream->codecpar->sample_rate,
+        printf("fps or sample rate: %d,nb frames: %ld\n", current_stream->avg_frame_rate.num,
                current_stream->nb_frames);
         AVDictionaryEntry *entry = NULL;
         for (int j = 0; j < av_dict_count(current_stream->metadata); j++) {
             entry = av_dict_get(current_stream->metadata, "", entry, AV_DICT_IGNORE_SUFFIX);
             printf("%s:%s\n", entry->key, entry->value);
         }
-        printf("%s\n", avcodec_get_name( current_stream->codecpar->codec_id));
-       //av_dump_format(mediaContext, i, mediaContext->url, 0);
+        printf("%s\n", avcodec_get_name(current_stream->codecpar->codec_id));
+        //av_dump_format(mediaContext, i, mediaContext->url, 0);
     }
 
 
@@ -44,31 +43,32 @@ AVFormatContext *open_media(char *mediaPath) {
 }
 
 MediaBuffer init_media_buffer(char *mediaPath, int bufferByteSize) {
-    
+
     int err;
     MediaBuffer mediaBuffer;
     AVFormatContext *mediaContext = avformat_alloc_context();
 
     char *fileUrl = malloc(sizeof(char *) * MAX_URL_LEN);
-    if (snprintf(fileUrl,MAX_URL_LEN,"%s%s",FILE_URL_SCHEME,mediaPath) < 0) {
+    if (snprintf(fileUrl, MAX_URL_LEN, "%s%s", FILE_URL_SCHEME, mediaPath) < 0) {
         return NULL;
     }
     err = avformat_open_input(&mediaContext, fileUrl, NULL, NULL);
     if (err < 0) {
         printf("could not open media file\nerr: %s", av_err2str(err));
     }
-     mediaBuffer = malloc(sizeof(MediaBuffer));
+    mediaBuffer = malloc(sizeof(MediaBuffer));
     mediaBuffer->mediaContext = mediaContext;
     mediaBuffer->packetBuffers = malloc(sizeof(PacketBuffer *) * 2);
     for (int i = 0; i < 2; i++) {
         mediaBuffer->packetBuffers[i] = malloc(sizeof(struct PacketBuffer));
-      //  mediaBuffer->packetBuffers[i]->totalByteSize = 100;
+        //  mediaBuffer->packetBuffers[i]->totalByteSize = 100;
         mediaBuffer->packetBuffers[i]->size = BUFF_INIT_SIZE;
         mediaBuffer->packetBuffers[i]->currentIdx = 0;
         mediaBuffer->packetBuffers[i]->currentByteSize = 0;
         mediaBuffer->packetBuffers[i]->totalByteSize = bufferByteSize;
         mediaBuffer->packetBuffers[i]->packets = malloc(sizeof(AVPacket *) * BUFF_INIT_SIZE);
     }
+
     return mediaBuffer;
 }
 
@@ -96,7 +96,6 @@ int buffer(MediaBuffer mediaBuffer, int bufferIdx) {
     for (int i = 0; i < buffer->size; i++) {
         AVPacket *pkt = av_packet_alloc();
         int res = av_read_frame(mediaBuffer->mediaContext, pkt);
-        printf("buffering\n");
         if (res < 0) {
             perror(av_err2str(res));
             buffer->size = i;
@@ -107,7 +106,6 @@ int buffer(MediaBuffer mediaBuffer, int bufferIdx) {
     }
     return 0;
 }
-
 
 int seek(MediaBuffer mediaBuffer, int64_t position) {
     av_seek_frame(mediaBuffer->mediaContext, 0, position, AVSEEK_FLAG_FRAME);
@@ -171,7 +169,6 @@ char **demux_file(AVFormatContext *mediaContext) {
     int i = 0;
     while (av_read_frame(mediaContext, packet) >= 0) {
         printf("%d: writing frame: stream# %d\n", i++, packet->stream_index);
-
         AVStream *srcStream = mediaContext->streams[packet->stream_index];
         int streamIndex = packet->stream_index;
         packet->stream_index = 0;
@@ -187,6 +184,95 @@ char **demux_file(AVFormatContext *mediaContext) {
         }
     }
     return streamBaseNames;
+}
+
+char decode_packet(AVCodecContext *dec, const AVPacket *pkt, AVFrame *frame)
+{
+    int ret = 0;
+    char c;
+    // submit the packet to the decoder
+    ret = avcodec_send_packet(dec, pkt);
+    if (ret < 0) {
+        fprintf(stderr, "Error submitting a packet for decoding (%s)\n", av_err2str(ret));
+        return c;
+    }
+    // get all the available frames from the decoder
+    while (ret >= 0) {
+        ret = avcodec_receive_frame(dec, frame);
+        if (ret < 0) {
+            // those two return values are special and mean there is no output
+            // frame available, but there were no errors during decoding
+            if (ret == AVERROR_EOF || ret == AVERROR(EAGAIN))
+                return c;
+            fprintf(stderr, "Error during decoding (%s)\n", av_err2str(ret));
+            return c;
+        }
+        c = av_get_picture_type_char(frame->pict_type);
+        printf("frame type: %c\n", c);
+        av_frame_unref(frame);
+    }
+
+    return c;
+}
+
+char* decode(char *filepath) {
+    AVFormatContext *ctx = open_media(filepath);
+    AVStream *videoStream = ctx->streams[0];
+    AVCodec *videoCodec = avcodec_find_decoder(videoStream->codecpar->codec_id);
+    AVCodecContext *videoCodecCtx = avcodec_alloc_context3(videoCodec);
+    AVCodecParserContext *parser;
+    AVPacket *pkt = av_packet_alloc();
+    FILE *inputFile;
+    uint8_t inBuff[FRAME_BUFF_SIZE + AV_INPUT_BUFFER_PADDING_SIZE];
+    uint8_t *data;
+    size_t data_size;
+    int eof = 0;
+    int remaining = 0;
+    char *pict_types = malloc(sizeof (char) * videoStream->nb_frames);
+    char *h_pic_types = pict_types;
+    if (videoCodec != NULL) {
+        printf("video codec name: %s\n", avcodec_get_name(videoStream->codecpar->codec_id));
+    }
+
+    /* Copy codec parameters from input stream to output codec context */
+    if ((avcodec_parameters_to_context(videoCodecCtx, videoStream->codecpar)) < 0) {
+        perror("");
+        exit(2);
+    }
+
+    if (avcodec_open2(videoCodecCtx,videoCodec,NULL) < 0) {
+        perror("");
+        exit(1);
+    }
+
+    parser = av_parser_init(videoStream->codecpar->codec_id);
+
+    if (!parser){
+        perror("");
+        exit(1);
+    }
+    (&ctx);
+
+    inputFile = fopen(filepath, "rb");
+    if (!inputFile) {
+        perror("");
+        return NULL;
+    }
+    int count  = 0;
+    AVFrame *frame = av_frame_alloc();
+        while (av_read_frame(ctx,pkt) >= 0) {
+
+            if (pkt->size) {
+                //printf("----new frame----\n");
+                *h_pic_types =  decode_packet(videoCodecCtx,pkt,frame);
+                printf("----new frame----: %c\n",*h_pic_types);
+                h_pic_types++;
+                count++;
+            }
+        }
+
+    printf("%s\n",pict_types );
+    return pict_types;
 }
 
 char *getFileName(char *name) {

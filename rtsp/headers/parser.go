@@ -156,6 +156,5 @@ func (t Transport) Serialize() string {
 			serializedTransport +=";"
 		}
 	}
-	fmt.Printf("%v\n",serializedTransport)
 	return serializedTransport
 }

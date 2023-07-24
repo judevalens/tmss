@@ -7,12 +7,17 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"github.com/pion/rtcp"
+	"go.uber.org/zap"
 	"log"
 	"math"
 	"math/rand"
 	"net"
+	"reflect"
+	"sync"
 	"time"
 	"tmss/media"
+	"tmss/misc"
 	"tmss/rtp/parser"
 	"tmss/rtsp/headers"
 	"unsafe"
@@ -35,21 +40,29 @@ type MediaStreamer interface {
 	HandleRtp()
 }
 type Streamer struct {
-	mediaId        string
-	mediaRecord    media.Media
-	buffer         *Buffer
-	bufferCommand  chan BufferCommand
-	rtpConn        net.PacketConn
-	rtcpConn       net.PacketConn
-	OutByteRate    int
-	streamID       int
-	PayloadType    byte
-	SequenceNumber int32
-	SSRC           int32
-	tsIncrement    uint32
-	rtpTimestamp   uint32
-	ClientAddr     net.Addr
-	CodecHeader    Header
+	mediaId          string
+	mediaRecord      media.Media
+	buffer           *Buffer
+	bufferCommand    chan BufferCommand
+	rtpConn          net.PacketConn
+	rtcpConn         net.PacketConn
+	OutByteRate      int
+	streamID         int
+	PayloadType      byte
+	SequenceNumber   int32
+	SSRC             uint32
+	tsIncrement      uint32
+	rtpTimestamp     uint32
+	ClientAddr       net.Addr
+	RtcpClientAddr   net.Addr
+	RtcpTimestamp    uint32
+	CodecHeader      Header
+	logger           zap.Logger
+	NumPacketSent    uint32
+	lastRtpPacket    time.Time
+	lastRtpTimestamp uint32
+	SenderMutex      *sync.RWMutex
+	packetCount      uint32
 }
 
 func Init(mediaRecord media.Media, streamId int, rtpConn net.PacketConn, rtcpConn net.PacketConn) (*Streamer, error) {
@@ -59,6 +72,7 @@ func Init(mediaRecord media.Media, streamId int, rtpConn net.PacketConn, rtcpCon
 		streamID:    streamId,
 		mediaRecord: mediaRecord,
 		PayloadType: byte(mediaRecord.Streams[streamId].PayloadType),
+		SenderMutex: &sync.RWMutex{},
 	}
 	decodedHeaderBytes, err := base64.StdEncoding.DecodeString(mediaRecord.Streams[streamId].HeaderB64)
 	if err != nil {
@@ -66,11 +80,10 @@ func Init(mediaRecord media.Media, streamId int, rtpConn net.PacketConn, rtcpCon
 	}
 	streamer.CodecHeader = ParseAvccHeader(decodedHeaderBytes)
 	streamer.OutByteRate = int(math.Ceil(float64(mediaRecord.Streams[streamId].BitRate) / float64(BitsInByte)))
-	fmt.Printf("byte rate: %v\n", streamer.OutByteRate)
+	streamer.tsIncrement = uint32(mediaRecord.Streams[streamId].TSIncrement)
 	buffSizeByte := C.int(BuffSizeFactor * streamer.OutByteRate)
 	// TODO change Stream.Path to Stream.Name
 	streamPath := C.CString(media.GetStreamPath(mediaRecord.Streams[streamId].Path))
-	fmt.Printf("stream path: %v\n", streamPath)
 	mediaBuffer := C.init_media_buffer(streamPath, buffSizeByte)
 	if mediaBuffer == nil {
 		return nil, errors.New("failed to create media buffer")
@@ -99,34 +112,36 @@ func (s *Streamer) Pause(timeRange headers.Range) {
 
 func (s *Streamer) HandleRtp() {
 	go func() {
-		fmt.Printf("trying to send rtp packets\n")
+		zap.L().Sugar().Infow("waiting for rtp connection", "stream id", s.streamID)
 		buff := make([]byte, MTU)
-		nBytesRead, a, err := s.rtpConn.ReadFrom(buff)
+		_, a, err := s.rtpConn.ReadFrom(buff)
 		if err != nil {
+			zap.L().Sugar().Errorw("rtp conn is interrupted", "err", err)
 			return
 		}
-
-		s.ClientAddr = a
 		stream := s.mediaRecord.Streams[s.streamID]
-		_ = nBytesRead
-		_ = a
 		_ = stream
+		s.ClientAddr = a
 		lastCommand := BufferCommand{
 			command: Play,
 		}
-		t0 := 0
+		t0 := time.Now().UnixNano()
 		maxByteOut := s.OutByteRate
 		remainingSize := maxByteOut
 		go s.buffer.BufferUp()
-
-		// send SPS and PPS
-
-		s.SendPacket(s.CodecHeader.SPS)
-		fmt.Printf("%v\n", s.CodecHeader.SPS)
-		s.SendPacket(s.CodecHeader.PPS)
-
+		i := 0
+		// sending SPS and PPS data
+		err = s.SendPacket(s.CodecHeader.SPS, 0)
+		if err != nil {
+			zap.L().Sugar().Fatalw("failed to send SPS data", "stream id", s.streamID, "remote addr", s.ClientAddr, "err", err)
+			return
+		}
+		err = s.SendPacket(s.CodecHeader.PPS, 0)
+		if err != nil {
+			zap.L().Sugar().Fatalw("failed to send PPS data", "stream id", s.streamID, "remote addr", s.ClientAddr, "err", err)
+			return
+		}
 		for {
-
 			select {
 			case newCommand := <-s.bufferCommand:
 				lastCommand = newCommand
@@ -134,33 +149,45 @@ func (s *Streamer) HandleRtp() {
 				switch lastCommand.command {
 				case Play:
 					{
-						println("sending AVPackets.....")
-						if t0 <= 0 || time.Now().Sub(time.Unix(0, int64(t0))) > time.Second {
-							t0 = time.Now().Nanosecond()
+						zap.L().Sugar().Debugw("sending packets", "stream id", s.streamID, "client addr", s.ClientAddr)
+						if time.Now().Sub(time.Unix(0, int64(t0))) > time.Millisecond*250 {
 							remainingSize = maxByteOut
+							t0 = time.Now().UnixNano()
 						}
+
 						/*avPacket := s.buffer.ReadNextPacket(true)
 
-						fmt.Printf("sending packet; pts: %v, size: %v\n", avPacket.pts, avPacket.size)
 
 						if int(avPacket.size) > remainingSize {
 							continue
 						}*/
 						avPacket := s.buffer.ReadNextPacket(false)
 						if avPacket == nil {
+							zap.L().Sugar().Infow("failed to read packet", "stream id", s.streamID, "client addr", s.ClientAddr)
 							return
 						}
 						encodedPacket := C.GoBytes(unsafe.Pointer(avPacket.data), C.int(avPacket.size))
-
-						fmt.Printf("packets: %v\n", encodedPacket[:20])
-						time.Sleep(time.Millisecond * 20)
+						//time.Sleep(time.Millisecond * 50)
 						nalUnits := AVCCToNalU(s.CodecHeader, encodedPacket)
 
 						for _, nalUnit := range nalUnits {
-							s.SendPacket(nalUnit)
+							err = s.SendPacket(nalUnit, uint32(avPacket.pts)/uint32(1))
+							if err != nil {
+								zap.L().Sugar().Errorw("failed to send frame", "stream id", s.streamID, "remote addr", s.ClientAddr, "err", err)
+								log.Fatal(err)
+								return
+							}
 						}
 						//TODO send packet
 						remainingSize -= int(avPacket.size)
+
+						/// reminder : tuning this paramter gives better stream and picture quality, optimal i = 60, sleep == 1s
+						if i > 60 {
+							i = 0
+							time.Sleep(time.Millisecond * 1000)
+						}
+						i++
+
 					}
 				case Pause:
 					{
@@ -178,49 +205,132 @@ func (s *Streamer) HandleRtp() {
 
 func (s *Streamer) HandleRtcp() {
 	go func() {
+		firstPacket := true
 		for {
-			buff := make([]byte, MTU)
+			buff := make([]byte, 65000)
 			n, from, err := s.rtcpConn.ReadFrom(buff)
 			fmt.Printf("received msg from: %s\n%s\n", from, string(buff[:n]))
 			if err != nil {
 				return
 			}
-
+			packets, err := rtcp.Unmarshal(buff[:n])
+			if err != nil {
+				zap.L().Sugar().Errorw("failed to parse rtcp packet...", "err", err)
+				continue
+			}
+			if firstPacket {
+				s.RtcpClientAddr = from
+				firstPacket = false
+				s.SendStats()
+			}
+			s.ParseRtcpPacket(packets)
 		}
 	}()
-
 }
 
-func (s *Streamer) SendPacket(data []byte) {
+func (s *Streamer) SendStats() {
+	go func() {
+		for {
+			s.SenderMutex.RLock()
+			now := time.Now()
+			elapsed := time.Since(s.lastRtpPacket)
+			elapsedToRtp := uint32(elapsed.Seconds()*90000) + s.lastRtpTimestamp
+			s.RtcpTimestamp = elapsedToRtp //uint32(now.Unix() * 90000)
+			zap.L().Sugar().Infow("rtcp ts", "rtp ts", elapsedToRtp, "now", now.Unix(), "last", s.lastRtpPacket)
+			//s.RtcpTimestamp += elapsedToRtp
+			senderReport := rtcp.SenderReport{
+				PacketCount: s.packetCount,
+				SSRC:        s.SSRC,
+				NTPTime:     misc.UtcToNtp(now.Unix()),
+				RTPTime:     s.RtcpTimestamp,
+			}
+			senderReportData, err := senderReport.Marshal()
+			if err != nil {
+				log.Fatal(err)
+			}
+			_, err = s.rtcpConn.WriteTo(senderReportData, s.RtcpClientAddr)
+			if err != nil {
+				s.SenderMutex.RUnlock()
+				return
+			}
+			s.SenderMutex.RUnlock()
+			time.Sleep(time.Second)
+		}
+	}()
+}
+
+func (s *Streamer) ParseRtcpPacket(packets []rtcp.Packet) {
+	var err error
+	for _, packet := range packets {
+		rawPacket, _ := packet.Marshal()
+		zap.L().Sugar().Infow("", "packet type", reflect.TypeOf(packet))
+		switch packet.(type) {
+		case *rtcp.CompoundPacket:
+			compoundPacket := rtcp.CompoundPacket{}
+			err := compoundPacket.Unmarshal(rawPacket)
+			if err != nil {
+				return
+			}
+			s.ParseRtcpPacket(compoundPacket)
+		case *rtcp.ReceiverReport:
+			receiverReport := rtcp.ReceiverReport{}
+			err = receiverReport.Unmarshal(rawPacket)
+			if err != nil {
+				return
+			}
+			for _, report := range receiverReport.Reports {
+				zap.L().Sugar().Infow("Receiver report", "jitter", report.Jitter)
+			}
+		case *rtcp.Goodbye:
+			byePacket := rtcp.Goodbye{}
+			err = byePacket.Unmarshal(rawPacket)
+			if err != nil {
+				return
+			}
+		}
+	}
+}
+func (s *Streamer) SendPacket(data []byte, pts uint32) error {
 	var fragments [][]byte
 	if len(data) > MTU {
 		fragments = packetizeNalUnit(data, DefaultFragmentationType, MTU)
 	} else {
 		fragments = [][]byte{data}
 	}
+	s.SenderMutex.Lock()
+	defer s.SenderMutex.Unlock()
 	s.rtpTimestamp += s.tsIncrement
-	for _, f := range fragments {
+	s.lastRtpTimestamp = s.rtpTimestamp
+	marker := 0
+
+	s.lastRtpPacket = time.Now()
+
+	for i, f := range fragments {
+		if i == len(fragments)-1 {
+			marker = 1
+		}
 		rtpHeader := parser.Header{
 			Version:        parser.RtpVersion,
+			Marker:         byte(marker),
 			PayloadType:    s.PayloadType,
 			SequenceNumber: uint16(s.GetNextSeqNumber()),
 			Timestamp:      s.rtpTimestamp,
-			SSRC:           uint32(s.SSRC),
+			SSRC:           s.SSRC,
 		}
 		rtpPacket := parser.SerializeRTPPacket(rtpHeader, f)
-		n, err := s.rtpConn.WriteTo(rtpPacket, s.ClientAddr)
+		_, err := s.rtpConn.WriteTo(rtpPacket, s.ClientAddr)
 		if err != nil {
-			log.Fatalf("failed to send data, err : %v\n", err)
-			return
+			zap.L().Sugar().Debugw("failed to send packet", "stream id", s.streamID, "client addr", s.ClientAddr)
+			return err
 		}
-		fmt.Printf("wrote %v to %v\n", n, s.ClientAddr)
+		s.packetCount += 1
 	}
-	return
+	return nil
 }
-
 func (s *Streamer) GetNextSeqNumber() int32 {
 	if s.SequenceNumber == 0 {
-		s.SequenceNumber = rand.Int31()
+		random := rand.New(rand.New(rand.NewSource(time.Now().Unix())))
+		s.SequenceNumber = random.Int31()
 	}
 	s.SequenceNumber += 1
 	return s.SequenceNumber

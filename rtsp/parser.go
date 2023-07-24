@@ -48,15 +48,12 @@ type Serializable interface {
 
 func ParseRequest(reader io.Reader) (*http.Request, error) {
 	req := &http.Request{}
-	var i = 0
 	bufferedReader := bufio.NewReader(reader)
 	currentLine, err := readline(bufferedReader)
 	if err != nil {
 		return nil, err
 	}
-	fmt.Printf("new index: %v\n", i)
 	statusLine := strings.Split(currentLine, " ")
-	fmt.Printf("status line: %v\n", statusLine)
 	if len(statusLine) != 3 {
 		return nil, errors.New("too many item in status line")
 	}
@@ -90,10 +87,8 @@ func ParseRequest(reader io.Reader) (*http.Request, error) {
 	// TODO should user a proper Closer
 	req.Body = io.NopCloser(bytes.NewReader(bodyBuff))
 	if err != nil {
-		fmt.Println("Failed to read request body")
 		return nil, err
 	}
-
 	return req, nil
 }
 func ParseResponse(reader io.Reader) (*http.Response, error) {

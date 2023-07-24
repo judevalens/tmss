@@ -59,6 +59,7 @@ type Stream struct {
 	SampleRate  int
 	FPS         int
 	HeaderB64   string
+	TSIncrement int
 }
 
 func NewJsonRepo() *JsonRepo {
@@ -99,9 +100,11 @@ func (repo JsonRepo) GetSDPSession(mediaId string) *sdp.SessionDescription {
 		},
 	}
 	session.SessionName = "video streaming"
-	session.MediaDescriptions = make([]*sdp.MediaDescription, len(media.Streams))
-	port := 5090
+	session.MediaDescriptions = make([]*sdp.MediaDescription, 1)
 	for i, stream := range media.Streams {
+		if i != 0 {
+			continue
+		}
 		session.MediaDescriptions[i] = &sdp.MediaDescription{
 			MediaName: sdp.MediaName{
 				Media:   stream.MediaType,
@@ -118,9 +121,11 @@ func (repo JsonRepo) GetSDPSession(mediaId string) *sdp.SessionDescription {
 					Key:   "control",
 					Value: fmt.Sprintf("%d", i),
 				},
+				{
+					Key:   "fmtp",
+					Value: fmt.Sprintf("%d packetization-mode=%d", stream.PayloadType, 1)},
 			},
 		}
-		port += 2
 	}
 	return session
 }
@@ -184,7 +189,6 @@ func buildMedia(mediaCtx *C.struct_AVFormatContext) Media {
 		MimeType:  C.GoString(mediaCtx.iformat.mime_type),
 		Streams:   make([]Stream, mediaCtx.nb_streams),
 	}
-
 	var i C.uint = 0
 	ptr := unsafe.Pointer(mediaCtx.streams)
 	payloadType := 96
@@ -213,9 +217,12 @@ func buildMedia(mediaCtx *C.struct_AVFormatContext) Media {
 			HeaderB64:   extraData,
 		}
 		payloadType++
+		if stream.MediaType == "video" {
+			stream.TSIncrement = int(float64(stream.ClockRate) / float64(stream.FPS))
+		}
 		media.Streams[i] = stream
 	}
-
+	
 	return media
 }
 

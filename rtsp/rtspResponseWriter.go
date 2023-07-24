@@ -3,7 +3,6 @@ package rtsp
 
 import (
 	"bytes"
-	"fmt"
 	"io"
 	"log"
 	"net"
@@ -38,8 +37,9 @@ func (r ResponseWriter) Write(data []byte) (int, error) {
 	if !r.isHeaderSet {
 		r.WriteHeader(http.StatusOK)
 	}
-
-	//r.Response.Header.Set(ContentLengthHeader, strconv.Itoa(len(data)))
+	if data == nil {
+		data = []byte{}
+	}
 	r.ContentLength = int64(len(data))
 	r.Response.Body = io.NopCloser(bytes.NewReader(data))
 	if r.ContentLength > 0 {
@@ -50,10 +50,7 @@ func (r ResponseWriter) Write(data []byte) (int, error) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Printf("res:\n%s\n", rawResponse)
 	n, err := r.conn.Write([]byte(rawResponse))
-
-	fmt.Printf("wrote n %d bytes to %v\n", n, r.conn.RemoteAddr())
 	return n, err
 }
 
