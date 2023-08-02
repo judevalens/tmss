@@ -2,7 +2,7 @@
 cmake-build-debug
 /.idea
 lib/mms/build
-
+gen
 *.interp
 *.tokens
 

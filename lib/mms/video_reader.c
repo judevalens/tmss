@@ -13,7 +13,17 @@
 #define BUFF_INIT_SIZE 10
 #define FRAME_BUFF_SIZE 4096
 
+#define VIDEO_EXT "mp4"
+#define AUDIO_EXT "aac"
+#define N_STREAMS 2
+
+char EXT_MAP[2][20] = {VIDEO_EXT, AUDIO_EXT};
+
 char *getFileName(char *name);
+
+int init_decoder(AVFormatContext *ctx, AVCodecContext **codec_ctx, int stream_index);
+
+char decode_packet(AVCodecContext *dec, const AVPacket *pkt, AVFrame *frame);
 
 AVFormatContext *open_media(char *mediaPath) {
     AVFormatContext *mediaContext = avformat_alloc_context();
@@ -115,9 +125,8 @@ int seek(MediaBuffer mediaBuffer, int64_t position) {
  * splits a video file into singular streams
  * @parameter mediaContext
  */
+
 char **demux_file(AVFormatContext *mediaContext) {
-    char *defaultVideoContainer = "mp4";
-    char *defaultAudioContainer = "mp4";
     int res = 0;
 
     const char *mediaBaseName = av_basename(mediaContext->url);
@@ -125,31 +134,50 @@ char **demux_file(AVFormatContext *mediaContext) {
     printf("dirname: %s\n", dirname);
     char *fileName = getFileName((char *) mediaBaseName);
     printf("input url: %s\n", mediaContext->url);
-    char **streamUrls = malloc(sizeof(char *) * mediaContext->nb_streams);
-    char **streamBaseNames = malloc(sizeof(char *) * mediaContext->nb_streams);
-    AVFormatContext **outCtx = malloc(sizeof(AVFormatContext *) * mediaContext->nb_streams);
+
+    char **streamUrls = malloc(sizeof(char *) * N_STREAMS);
+    char **streamBaseNames = malloc(sizeof(char *) * N_STREAMS);
+    AVFormatContext **outCtx = malloc(sizeof(AVFormatContext **) * N_STREAMS);
+    AVCodecContext **codecCtx = malloc(sizeof(AVCodecContext **) * N_STREAMS);
+    int videoIdx = av_find_best_stream(mediaContext, AVMEDIA_TYPE_VIDEO, -1, -1, NULL, 0);
+    int audioIdx = av_find_best_stream(mediaContext, AVMEDIA_TYPE_AUDIO, -1, -1, NULL, 0);
+    int idxMap[2] = {videoIdx, audioIdx};
+
     for (int i = 0; i < mediaContext->nb_streams; i++) {
-        char *fileUrl = av_append_path_component(dirname, fileName);
-        int fileUrlLen = snprintf(NULL, 0, "%s%s_stream_%d.%s", FILE_URL_SCHEME, fileUrl, i,
-                                  defaultAudioContainer);
-        streamUrls[i] = malloc(sizeof(char) * fileUrlLen);
+        AVStream *current_stream = mediaContext->streams[i];
+        int mediaType = current_stream->codecpar->codec_type;
+        if (mediaType != AVMEDIA_TYPE_VIDEO && mediaType != AVMEDIA_TYPE_AUDIO) {
+            continue;
+        }
+        int stream_idx;
 
-        snprintf(streamUrls[i], MAX_URL_LEN, "%s%s_stream_%d.%s", FILE_URL_SCHEME, fileUrl, i,
-                 defaultAudioContainer);
+        if (current_stream->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
+            stream_idx = 0;
+        } else if (current_stream->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
+            stream_idx = 1;
+        }
 
+        char *file_url = av_append_path_component(dirname, fileName);
+        int file_url_len = snprintf(NULL, 0, "%s%s_%s_stream.%s", FILE_URL_SCHEME, file_url,
+                                    av_get_media_type_string(mediaType), EXT_MAP[stream_idx]);
+        streamUrls[i] = malloc(sizeof(char) * file_url_len);
+        snprintf(streamUrls[i], MAX_URL_LEN, "%s%s_%s_stream.%s", FILE_URL_SCHEME, file_url,
+                 av_get_media_type_string(mediaType), EXT_MAP[stream_idx]);
 
         streamBaseNames[i] = (char *) av_basename(streamUrls[i]);
 
-        AVStream *currentStream = mediaContext->streams[i];
         printf("stream url: %s\n", streamUrls[i]);
         res = avformat_alloc_output_context2(&outCtx[i], NULL, NULL, streamUrls[i]);
-
         if (res < 0) {
             printf("failed to create out ctx for stream: %d", i);
             return NULL;
         }
+        res = init_decoder(mediaContext, &codecCtx[stream_idx], i);
+        if (res < 0) {
+            fprintf(stderr, "failed to init decoder for stream: %d", stream_idx);
+        }
         AVStream *newStream = avformat_new_stream(outCtx[i], NULL);
-        avcodec_parameters_copy(newStream->codecpar, currentStream->codecpar);
+        avcodec_parameters_copy(newStream->codecpar, current_stream->codecpar);
 
         res = avio_open(&outCtx[i]->pb, outCtx[i]->url, AVIO_FLAG_WRITE);
 
@@ -166,17 +194,32 @@ char **demux_file(AVFormatContext *mediaContext) {
     free(fileName);
     free((char *) dirname);
     AVPacket *packet = av_packet_alloc();
+    AVFrame *frame = av_frame_alloc();
     int i = 0;
+    // demux the media file and decode each avpacket from the video stream to extract the picture type and save it as a side data before writing it disk
+
     while (av_read_frame(mediaContext, packet) >= 0) {
         printf("%d: writing frame: stream# %d\n", i++, packet->stream_index);
-        AVStream *srcStream = mediaContext->streams[packet->stream_index];
+        AVStream *src_stream = mediaContext->streams[packet->stream_index];
+        int mediaType = src_stream->codecpar->codec_type;
+        int stream_idx;
+        if (mediaType == AVMEDIA_TYPE_VIDEO) {
+            stream_idx = 0;
+        } else if (mediaType == AVMEDIA_TYPE_AUDIO) {
+            stream_idx = 1;
+        } else {
+            continue;
+        }
+
         int streamIndex = packet->stream_index;
         packet->stream_index = 0;
-        av_packet_rescale_ts(packet, srcStream->time_base,
+        decode_packet(codecCtx[stream_idx], packet, frame);
+        av_packet_rescale_ts(packet, src_stream->time_base,
                              outCtx[streamIndex]->streams[0]->time_base);
         av_interleaved_write_frame(outCtx[streamIndex], packet);
     }
-    for (int j = 0; j < mediaContext->nb_streams; j++) {
+
+    for (int j = 0; j < N_STREAMS; j++) {
         res = av_write_trailer(outCtx[j]);
         if (res < 0) {
             printf("failed to write trailer for stream: %d", i);
@@ -186,8 +229,7 @@ char **demux_file(AVFormatContext *mediaContext) {
     return streamBaseNames;
 }
 
-char decode_packet(AVCodecContext *dec, const AVPacket *pkt, AVFrame *frame)
-{
+char decode_packet(AVCodecContext *dec, const AVPacket *pkt, AVFrame *frame) {
     int ret = 0;
     char c;
     // submit the packet to the decoder
@@ -208,6 +250,19 @@ char decode_packet(AVCodecContext *dec, const AVPacket *pkt, AVFrame *frame)
             return c;
         }
         c = av_get_picture_type_char(frame->pict_type);
+        int pkt_metadata_size = 0;
+        uint8_t *metadata_str;
+
+
+        AVDictionary *metadata = NULL;
+
+        av_dict_set(&metadata, "frame_type", &c, 0);
+        av_dict_get_string(metadata, (char **) &metadata_str, '=', ':');
+        printf("str pair: %s\n", metadata_str);
+        av_packet_add_side_data((AVPacket *) pkt, AV_PKT_DATA_METADATA_UPDATE, metadata_str,
+                                strlen(((char *) metadata_str)) - 1);
+
+
         printf("frame type: %c\n", c);
         av_frame_unref(frame);
     }
@@ -215,7 +270,7 @@ char decode_packet(AVCodecContext *dec, const AVPacket *pkt, AVFrame *frame)
     return c;
 }
 
-char* decode(char *filepath) {
+char *decode(char *filepath) {
     AVFormatContext *ctx = open_media(filepath);
     AVStream *videoStream = ctx->streams[0];
     AVCodec *videoCodec = avcodec_find_decoder(videoStream->codecpar->codec_id);
@@ -228,7 +283,7 @@ char* decode(char *filepath) {
     size_t data_size;
     int eof = 0;
     int remaining = 0;
-    char *pict_types = malloc(sizeof (char) * videoStream->nb_frames);
+    char *pict_types = malloc(sizeof(char) * videoStream->nb_frames);
     char *h_pic_types = pict_types;
     if (videoCodec != NULL) {
         printf("video codec name: %s\n", avcodec_get_name(videoStream->codecpar->codec_id));
@@ -240,14 +295,14 @@ char* decode(char *filepath) {
         exit(2);
     }
 
-    if (avcodec_open2(videoCodecCtx,videoCodec,NULL) < 0) {
+    if (avcodec_open2(videoCodecCtx, videoCodec, NULL) < 0) {
         perror("");
         exit(1);
     }
 
     parser = av_parser_init(videoStream->codecpar->codec_id);
 
-    if (!parser){
+    if (!parser) {
         perror("");
         exit(1);
     }
@@ -258,21 +313,64 @@ char* decode(char *filepath) {
         perror("");
         return NULL;
     }
-    int count  = 0;
+    int count = 0;
     AVFrame *frame = av_frame_alloc();
-        while (av_read_frame(ctx,pkt) >= 0) {
+    while (av_read_frame(ctx, pkt) >= 0) {
 
-            if (pkt->size) {
-                //printf("----new frame----\n");
-                *h_pic_types =  decode_packet(videoCodecCtx,pkt,frame);
-                printf("----new frame----: %c\n",*h_pic_types);
-                h_pic_types++;
-                count++;
+        if (pkt->size) {
+            //printf("----new frame----\n");
+            *h_pic_types = decode_packet(videoCodecCtx, pkt, frame);
+            printf("----new frame----: %c\n", *h_pic_types);
+            h_pic_types++;
+            count++;
+        }
+    }
+
+    if (av_seek_frame(ctx, 0, 0, AVSEEK_FLAG_BACKWARD) < 0) {
+        exit(9);
+    }
+    while (av_read_frame(ctx, pkt) >= 0) {
+
+        if (pkt->size) {
+            printf("print side data\n");
+            //printf("----new frame----\n");
+            AVDictionary *dict = NULL;
+            int metadata_size = 0;
+            uint8_t *metadata_st = av_packet_get_side_data(pkt, AV_PKT_DATA_METADATA_UPDATE, &metadata_size);
+            if (metadata_size) {
+                av_dict_parse_string(&dict, (char *) metadata_st, "=", ":", 0);
+                if (dict) {
+                    AVDictionaryEntry *entry = NULL;
+                    while ((entry = av_dict_get(dict, "", entry, AV_DICT_IGNORE_SUFFIX))) {
+                        printf("Key: %s, Value: %s\n", entry->key, entry->value);
+                    }
+                }
             }
         }
+    }
 
-    printf("%s\n",pict_types );
+    printf("%s\n", pict_types);
     return pict_types;
+}
+
+int init_decoder(AVFormatContext *ctx, AVCodecContext **codec_ctx, int stream_index) {
+    AVStream *stream = ctx->streams[stream_index];
+    AVCodec *streamCodec = avcodec_find_decoder(stream->codecpar->codec_id);
+    if (!streamCodec) {
+        fprintf(stderr, "failed to find codec");
+        return -1;
+    }
+    *codec_ctx = avcodec_alloc_context3(streamCodec);
+    /* Copy codec parameters from input stream to output codec context */
+    if (avcodec_parameters_to_context(*codec_ctx, stream->codecpar) < 0) {
+        perror("");
+        exit(2);
+    }
+    if (avcodec_open2(*codec_ctx, streamCodec, NULL) < 0) {
+        perror("");
+        exit(1);
+    }
+    return -1;
 }
 
 char *getFileName(char *name) {

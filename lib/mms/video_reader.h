@@ -11,7 +11,7 @@
 #include "libavutil/avstring.h"
 #include "libavcodec/avcodec.h"
 #include "rtp.h"
-
+#include "glib-2.0/glib.h"
 #endif //MMS_VIDEO_READER_H
 
 typedef struct PacketBuffer {

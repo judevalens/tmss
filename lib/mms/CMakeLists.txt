@@ -1,30 +1,22 @@
 cmake_minimum_required(VERSION 3.16)
 project(mms C)
-set(FFMPEG_LIB "/usr/lib/x86_64-linux-gnu/")
-set(FFMPEG__INCLUDE_LIB "/usr/include/x86_64-linux-gnu")
+
 set(CMAKE_C_STANDARD 99)
-link_directories(${FFMPEG_LIB})
-message(STATUS "path: ${FFMPEG_LIB}")
 
-include_directories("${FFMPEG__INCLUDE_LIB}/libavformat")
-include_directories("${FFMPEG__INCLUDE_LIB}/libavutil")
-include_directories("${FFMPEG__INCLUDE_LIB}/libavcodec")
+find_package(PkgConfig REQUIRED)
 
-find_library(LIBAVFORMAT avformat)
-find_library(LIBAVUTIL avutil)
-find_library(LIBAVCODEC avcodec)
-if(NOT LIBAVCODEC)
-    message(FATAL_ERROR "avformat library not found")
-endif()
-message(STATUS "path: ${LIBAVFORMAT}")
-message(STATUS "path: ${LIBAVUTIL}")
-message(STATUS "path: ${LIBAVCODEC}")
-add_executable(mms main.c video_reader.c video_reader.h repo.c repo.h rtp.h)
+pkg_check_modules(GLIB REQUIRED glib-2.0)
+pkg_check_modules(LIBAVFORMAT REQUIRED libavformat)
+pkg_check_modules(LIBAVCODEC REQUIRED libavcodec)
+pkg_check_modules(LIBAVUTIL REQUIRED libavutil)
+
+
+add_executable(mms main.c video_reader.c video_reader.h repo.c repo.h rtp.h proc.c proc.h)
 add_library(mms_media SHARED video_reader.c video_reader.h rtp.c rtp.h)
-target_include_directories(mms PUBLIC ${FFMPEG__INCLUDE_LIB})
-target_link_libraries(mms ${LIBAVFORMAT} ${LIBAVUTIL} ${LIBAVCODEC})
-target_link_libraries(mms_media ${LIBAVFORMAT} ${LIBAVUTIL} ${LIBAVCODEC})
+
+target_include_directories(mms PUBLIC ${LIBAVFORMAT_INCLUDE_DIRS} ${LIBAVCODEC_INCLUDE_DIRS} ${LIBAVUTIL_INCLUDE_DIRS} ${GLIB_INCLUDE_DIRS}})
+target_link_libraries(mms ${LIBAVFORMAT_LINK_LIBRARIES} ${LIBAVUTIL_LINK_LIBRARIES} ${LIBAVCODEC_LINK_LIBRARIES} ${GLIB_LINK_LIBRARIES})
+target_link_libraries(mms_media ${LIBAVFORMAT_LINK_LIBRARIES} ${LIBAVUTIL_LINK_LIBRARIES} ${LIBAVCODEC_LINK_LIBRARIES} ${GLIB_LINK_LIBRARIES})
 set_target_properties(mms_media PROPERTIES PUBLIC_HEADER "video_reader.h;rtp.h")
 
-install(TARGETS mms_media DESTINATION  /usr/lib
-        PUBLIC_HEADER DESTINATION usr/include)
+install(TARGETS mms_media DESTINATION /usr/lib PUBLIC_HEADER DESTINATION usr/include)

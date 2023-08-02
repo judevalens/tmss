@@ -8,110 +8,49 @@
 #include "libavutil/dict.h"
 #include "libavcodec/avcodec.h"
 #include "video_reader.h"
-#define VIDEO_SAMPLE_URL "file:/home/jude/Downloads/buck_bunny.mp4"
+#define VIDEO_SAMPLE_URL "/home/jude/Desktop/amnis_server/big_buck_bunny.mp4"
 #define OUT_VIDEO_URL "file:home/jude/Downloads/buck_bunny.mkv"
 #define OUT_VIDEO_PATH "home/jude/Downloads/buck_bunny.mkv"
 #define OUT_FORMAT "MKV"
 #define VID "/home/jude/Desktop/amnis_server/big_buck_bunny_244e2a14a22_stream_0.mp4"
 AVFormatContext* openMedia();
-
+void* worker(gpointer data);
 int main() {
-    time_t t0;
-    time_t t1;
-    time(&t0);
-    decode(VID);
-    time(&t1);
-    printf("duration: %ld\n",t1-t0);
+    g_path_is_absolute("sk");
+  // AVFormatContext *media_ctx = open_media(VIDEO_SAMPLE_URL);
+   //demux_file(media_ctx);
+   int nthreads = 100;
+    int *thread_ids = malloc(sizeof (int)*nthreads);
+    GThread **threads = malloc(sizeof (GThread)*nthreads);
+   for (int i = 0; i < nthreads; i++) {
+       thread_ids[i] = i;
+       threads[i] = g_thread_new("my thread",worker,&thread_ids[i]);
+   }
 
+
+
+   for (int i = 0; i < nthreads; i++) {
+       g_thread_join(threads[i]);
+   }
+    printf("waiting for threads");
     return 0;
 }
 
+void* worker(gpointer data) {
+    int val = *(int*)(data);
+    GRand *rand = g_rand_new();
+    int rand_val;
+    do {
+        rand_val = g_rand_int_range(rand,0,2000);
+        g_usleep(1000*1);
+        //printf("rand val: %d\n",rand_val);
+    } while (rand_val <= 99 || rand_val >= 101);
+
+    printf("thread: %d\n",val);
+
+}
+
 static void print_dict(const AVDictionary *m);
-
-static void transcode(AVFormatContext *input_fmt_ctx, char *out_fmt, char *out_path);
-
-AVFormatContext* openMedia() {
-    AVFormatContext *mediaContext = avformat_alloc_context();
-    printf("open media: %s,\n", av_err2str(avformat_open_input(&mediaContext, VIDEO_SAMPLE_URL, NULL, NULL)));
-    printf("file name:: %s, extension %s, n stream: %d\n", mediaContext->url, mediaContext->iformat->name,
-           mediaContext->nb_streams);
-    for (int i = 0; i < mediaContext->nb_streams; i++) {
-        AVStream *current_stream = mediaContext->streams[i];
-        /*const AVCodecDescriptor *code_desc = avcodec_descriptor_get(current_stream->codecpar->codec_id);
-        printf("# %d, codec type %s, media_type %s \n",current_stream->id,code_desc->name,av_get_media_type_string(code_desc->type));*/
-        av_dump_format(mediaContext, i, mediaContext->url, 0);
-    }
-    return mediaContext;
-}
-
-void transcode(AVFormatContext *input_fmt_ctx, char *out_fmt, char *out_path) {
-    printf("transcoding to %s\n", out_fmt);
-    int err = 0;
-    AVPacket *av_packet = av_packet_alloc();
-    AVFormatContext *out_ctx;
-    AVOutputFormat *av_out_fmt = av_guess_format(out_fmt, out_path, NULL);
-
-    err = avformat_alloc_output_context2(&out_ctx, av_out_fmt, out_fmt, out_path);
-
-    if (err < 0) {
-        printf("failed to allocate output ctx\nerr: %s\n", av_err2str(err));
-    }
-    for (int i = 0; i < input_fmt_ctx->nb_streams; i++) {
-        if (!avformat_new_stream(out_ctx, NULL)) {
-            printf("failed to add stream to output ctx\n");
-            return;
-        }
-        err = avcodec_parameters_copy(out_ctx->streams[i]->codecpar, input_fmt_ctx->streams[i]->codecpar);
-        if (err) {
-            printf("failed to copy codec param for stream # %d\nerr:%s", i, av_err2str(err));
-            return;
-        }
-        out_ctx->streams[i]->codecpar->codec_tag = 0;
-        av_dump_format(out_ctx, i, OUT_VIDEO_URL, 1);
-    }
-
-    if (!av_out_fmt) {
-        printf("err: could not create AVOutputFormat struct\n");
-        return;
-    }
-
-    err = avio_open(&out_ctx->pb, OUT_VIDEO_URL, AVIO_FLAG_WRITE);
-    if (err) {
-        printf("failed to create IO context for out_fmt_ctx\nerr: %s\n", av_err2str(err));
-        return;
-    }
-    err = avformat_write_header(out_ctx, NULL);
-    if (err < 0) {
-        printf("failed to write header:\nerr: %s", av_err2str(err));
-    }
-    while (1) {
-        AVStream *in_stream, *out_stream;
-        err = av_read_frame(input_fmt_ctx, av_packet);
-
-        if (err < 0) {
-            printf("err: %s\n", av_err2str(err));
-            break;
-        }
-        printf("stream index %d, out nb stream %d\n", av_packet->stream_index, out_ctx->nb_streams);
-
-        av_packet_rescale_ts(av_packet, input_fmt_ctx->streams[av_packet->stream_index]->time_base,
-                             out_ctx->streams[av_packet->stream_index]->time_base);
-        av_packet->pos = -1;
-        printf("packet from stream #%d, at %ld\n", av_packet->stream_index, av_packet->pts);
-
-        err = av_interleaved_write_frame(out_ctx, av_packet);
-        if (err < 0) {
-            printf("err: %s", av_err2str(err));
-            break;
-        }
-    }
-    err = av_write_trailer(out_ctx);
-
-    if (err < 0) {
-        printf("err: %s\n", av_err2str(err));
-    }
-}
-
 static void print_dict(const AVDictionary *m) {
     AVDictionaryEntry *t = NULL;
     while ((t = av_dict_get(m, "", t, AV_DICT_IGNORE_SUFFIX)))
